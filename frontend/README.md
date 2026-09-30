@@ -1,4 +1,4 @@
-# DMI frontend — Milestone 5
+# AXIOM frontend — through Milestone 6
 
 A local Next.js App Router, TypeScript, and Tailwind CSS interface. No hosting
 provider or external fonts are required. Authentication and quizzes use the local FastAPI backend.
@@ -23,20 +23,8 @@ cd backend
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Apply Alembic revision `0005` in the backend before using this frontend.
+Apply all Alembic migrations through revision `0006` in the backend before using this frontend.
 Do not copy its password or environment file into the frontend.
-
-On the current workstation, Node and pnpm are also available through the Codex
-runtime. If they are not in your terminal's PATH, use this alternative from `frontend/`:
-
-```powershell
-$dmiRuntime = "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies"
-$env:Path = "$dmiRuntime\node\bin;$env:Path"
-& "$dmiRuntime\bin\fallback\pnpm.cmd" dev
-```
-
-This runtime path is an optional workstation convenience, not an application
-dependency. A regular Node.js/pnpm installation works identically.
 
 ## API configuration
 
@@ -100,14 +88,13 @@ pnpm build
 pnpm start
 ```
 
-See `../docs/milestone-3-verification.md` for the current browser verification record.
+See `../docs/milestone-3-verification.md` for the historical M3 browser verification record.
 
 ## Intentional limits
 
-- Dashboard statistics and the suggested Sets activity are frontend examples,
-  visibly marked as such. They do not represent student activity.
-- Learn and Progress remain preview pages. Quizzes provide the implemented student workflow.
-- Teacher routes and FastAPI are unauthenticated local development surfaces.
+- Learn remains a course-outline preview; lessons are planned.
+- Dashboard and Progress use authoritative authenticated M6A analytics.
+- Staff routes require authorized roles; student attempts and progress are private.
 - Question Bank uses server-side filters, exact totals and offset/limit pagination (12 per page).
 - Mathematical text uses Unicode/plain text; LaTeX rendering is not implemented.
 - The initial lint toolchain uses ESLint 9 for compatibility with Next's React
@@ -171,3 +158,9 @@ confirmation. All affected sessions are revoked and the user must sign in again.
 The proxy adds `/api/auth/*` and `/api/users/*`. Authentication cookies are HttpOnly;
 the CSRF token stays in memory and is restored from `/auth/me`. No new frontend
 dependency or environment variable is required. Startup commands are unchanged.
+
+## Milestone 6 — Student Progress
+
+The dashboard and `/student/progress` use authenticated M6A analytics. See
+[frontend notes](../docs/milestone-6b-progress-frontend.md) and
+[metric definitions](../docs/milestone-6a-progress-analytics.md).

@@ -28,3 +28,13 @@ Desktop.ini
 *.key
 secrets/
 .secrets/
+*.tmp
+*.temp
+*.swp
+*~
+coverage/
+coverage.xml
+.coverage.*
+out/
+*.p12
+*.pfx

@@ -27,7 +27,7 @@ handle password encoding. The role needs migration privileges.
 
 Swagger: http://127.0.0.1:8000/docs. OpenAPI: `/openapi.json`.
 Tables are created only through Alembic, never on application startup.
-Existing startup commands are unchanged; apply revision `0005` before using the API.
+Existing startup commands are unchanged; apply all migrations through revision `0006` before using the API.
 
 ## Authentication and permissions
 
@@ -150,8 +150,7 @@ data. Use a reviewed backup restore or a deliberate forward migration instead.
 See [architecture](../docs/milestone-3-architecture.md) and
 [verification](../docs/milestone-3-verification.md) for transformations and results.
 
-This is an unauthenticated local development API whose management responses expose
-answers intentionally. Student access control, assessments and manual grading belong to later milestones. Milestone 4 adds the persisted quiz attempts documented below.
+Management responses expose answers only to authorized staff. Students use owner-scoped quiz endpoints; solutions become available after submission. Manual grading remains planned.
 
 ## Milestone 4 — student quizzes
 
