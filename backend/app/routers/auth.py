@@ -7,22 +7,49 @@ from app.database import get_session
 from app.auth import COOKIE,passwords,DUMMY_HASH,digest,issue_session,get_current_user,manager_user,revoke_user_sessions,limit_auth
 from app.auth_models import User,AuthSession
 from app.auth_schemas import Credentials,LoginCredentials,UserRead,AuthRead,RoleChange,StatusChange
+from app.auth_schemas import RegistrationCredentials,VerificationInput,ResendInput
+from app.services.email_verification import VerificationDelivery,get_verification_delivery,issue_verification,verify_email
+from app.services.smtp_delivery import DeliveryUnavailable
 
 router=APIRouter(tags=['Authentication and users'])
 DB=Annotated[Session,Depends(get_session)]
 Current=Annotated[User,Depends(get_current_user)]
 Manager=Annotated[User,Depends(manager_user)]
 Id=Annotated[int,Path(gt=0)]
+Delivery=Annotated[VerificationDelivery,Depends(get_verification_delivery)]
 
 @router.post('/auth/register',response_model=UserRead,status_code=201,dependencies=[Depends(limit_auth)])
-def register(payload:Credentials,session:DB):
-    user=User(email=str(payload.email).lower(),password_hash=passwords.hash(payload.password.get_secret_value()),role='STUDENT')
+def register(payload:RegistrationCredentials,session:DB,deliver:Delivery):
+    user=User(email=str(payload.email).lower(),password_hash=passwords.hash(payload.password.get_secret_value()),role='STUDENT',email_verified=False)
     session.add(user)
-    try: session.commit()
+    try:
+        session.flush()
+        issue_verification(session,user,deliver)
+        session.commit()
     except IntegrityError:
         session.rollback()
         raise HTTPException(409,'An account with this email already exists') from None
+    except DeliveryUnavailable:
+        session.rollback()
+        raise HTTPException(503,'Verification email could not be sent. Please try again later.') from None
     return user
+
+@router.post('/auth/verify-email',status_code=204,dependencies=[Depends(limit_auth)])
+def verify(payload:VerificationInput,session:DB):
+    verify_email(session,payload.token.get_secret_value())
+
+@router.post('/auth/resend-verification',status_code=202,dependencies=[Depends(limit_auth)])
+def resend(payload:ResendInput,session:DB,deliver:Delivery):
+    user=session.scalar(select(User).where(User.email==str(payload.email).lower()).with_for_update())
+    if user and user.is_active and not user.is_legacy and not user.email_verified:
+        try:
+            issue_verification(session,user,deliver)
+        except DeliveryUnavailable:
+            # Keep the old token and cooldown; same response for all accounts.
+            session.rollback()
+            return {'message':'If this account needs verification, a verification request has been accepted.'}
+    session.commit()
+    return {'message':'If this account needs verification, a verification request has been accepted.'}
 
 @router.post('/auth/login',response_model=AuthRead,dependencies=[Depends(limit_auth)])
 def login(payload:LoginCredentials,session:DB,response:Response,request:Request):
@@ -31,6 +58,8 @@ def login(payload:LoginCredentials,session:DB,response:Response,request:Request)
     valid=passwords.verify(payload.password.get_secret_value(),candidate)
     if not valid or user is None or not user.is_active or user.is_legacy:
         raise HTTPException(401,'Invalid email or password')
+    if not user.email_verified:
+        raise HTTPException(403,'Verify your email before signing in')
     old=request.cookies.get(COOKIE)
     if old: session.execute(delete(AuthSession).where(AuthSession.token_hash==digest(old)))
     return {'user':user,'csrf_token':issue_session(session,user,response)}
@@ -48,7 +77,7 @@ def logout(user:Current,session:DB,request:Request,response:Response):
 @router.get('/users',response_model=list[UserRead])
 def list_users(actor:Manager,session:DB,q:Annotated[str,Query(max_length=254)]='',offset:Annotated[int,Query(ge=0)]=0,limit:Annotated[int,Query(ge=1,le=100)]=20):
     roles=['STUDENT','DEMONSTRATOR'] if actor.role=='LECTURER' else ['STUDENT','DEMONSTRATOR','LECTURER']
-    return list(session.scalars(select(User).where(User.is_legacy.is_(False),User.role.in_(roles),User.email.icontains(q.strip(),autoescape=True)).order_by(User.id).offset(offset).limit(limit)))
+    return list(session.scalars(select(User).where(User.is_legacy.is_(False),User.is_system_managed.is_(False),User.role.in_(roles),User.email.icontains(q.strip(),autoescape=True)).order_by(User.id).offset(offset).limit(limit)))
 
 
 def managed_target(session:Session,actor:User,target_id:int)->User:
@@ -58,7 +87,7 @@ def managed_target(session:Session,actor:User,target_id:int)->User:
         raise HTTPException(403,'Account management permission required')
     target=session.scalar(select(User).where(User.id==target_id).with_for_update())
     if target is None: raise HTTPException(404,'User not found')
-    if target.id==actor.id or target.is_legacy or target.role=='ADMIN':
+    if target.id==actor.id or target.is_legacy or target.role=='ADMIN' or target.is_system_managed:
         raise HTTPException(403,'This account cannot be managed here')
     if actor.role=='LECTURER' and target.role not in {'STUDENT','DEMONSTRATOR'}:
         raise HTTPException(403,'Lecturers may manage demonstrators only')

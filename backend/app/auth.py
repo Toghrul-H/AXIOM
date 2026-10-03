@@ -50,7 +50,7 @@ def get_current_user(request:Request,session:Annotated[Session,Depends(get_sessi
     if auth is None or auth.expires_at<=datetime.now(timezone.utc):
         raise HTTPException(401,'Session expired. Sign in again')
     user=session.get(User,auth.user_id)
-    if user is None or not user.is_active or user.is_legacy:
+    if user is None or not user.is_active or user.is_legacy or not user.email_verified:
         raise HTTPException(401,'Account unavailable. Sign in with an active account')
     if request.method not in {'GET','HEAD','OPTIONS'}:
         csrf=csrf_header or ''

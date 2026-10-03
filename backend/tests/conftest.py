@@ -1,4 +1,5 @@
 from uuid import uuid4
+import os
 import pytest
 from fastapi import Response
 from sqlalchemy import delete
@@ -9,6 +10,32 @@ from app.database import get_engine
 
 # Test-only credential, never used for persistent or browser accounts.
 TEST_PASSWORD = 'test-only-password-42!'
+
+@pytest.fixture(autouse=True)
+def disable_real_smtp(monkeypatch):
+    # All tests, including legacy registration tests, must never contact Gmail.
+    from unittest.mock import MagicMock
+    import smtplib
+    from app.config import get_settings
+    settings = get_settings()
+    for key, value in {'smtp_host':'smtp.example.test', 'smtp_username':'test',
+                       'email_from_address':'sender@example.com',
+                       'frontend_base_url':'http://127.0.0.1:3000'}.items():
+        monkeypatch.setattr(settings, key, value)
+    from pydantic import SecretStr
+    monkeypatch.setattr(settings, 'smtp_password', SecretStr('test-only-smtp-secret'))
+    monkeypatch.setattr(settings, 'smtp_use_tls', True)
+    monkeypatch.setattr(settings, 'smtp_port', 587)
+    for name in ['SMTP', 'SMTP_SSL']:
+        factory = MagicMock()
+        factory.return_value.__enter__.return_value.send_message.return_value = {}
+        monkeypatch.setattr(smtplib, name, factory)
+
+def pytest_sessionstart(session):
+    # Integration fixtures write/delete data. Never run them against a deployment.
+    if os.getenv('RUN_POSTGRES_TESTS') == '1':
+        if get_engine().url.host not in {'localhost', '127.0.0.1', '::1'}:
+            raise pytest.UsageError('PostgreSQL integration tests require a local database. Configure the connection privately before running tests.')
 
 @pytest.fixture
 def accounts():

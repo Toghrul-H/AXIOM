@@ -28,7 +28,7 @@ async def private_attempt_responses(request: Request, call_next):
             return JSONResponse(status_code=403, content={'detail':'Untrusted request origin'})
         if request.headers.get('sec-fetch-site') == 'cross-site':
             return JSONResponse(status_code=403, content={'detail':'Cross-site requests are not permitted'})
-        if request.url.path in {'/auth/login','/auth/register'} and request.headers.get('content-type','').split(';')[0] != 'application/json':
+        if request.url.path in {'/auth/login','/auth/register','/auth/verify-email','/auth/resend-verification'} and request.headers.get('content-type','').split(';')[0] != 'application/json':
             return JSONResponse(status_code=415, content={'detail':'Use application/json'})
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"

@@ -29,7 +29,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   const path = usePathname();
   const router = useRouter();
-  const publicPage = path === "/login" || path === "/register";
+  const verificationPage = path === "/verify-email" || path === "/check-email";
+  const publicPage =
+    path === "/login" || path === "/register" || verificationPage;
   useEffect(() => {
     let alive = true;
     const expire = () => {
@@ -77,8 +79,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading || error) return;
     if (!user && !publicPage) router.replace("/login");
-    if (user && (publicPage || path === "/")) router.replace(homeFor(user));
-  }, [loading, error, user, publicPage, path, router]);
+    if (user && ((publicPage && !verificationPage) || path === "/"))
+      router.replace(homeFor(user));
+  }, [loading, error, user, publicPage, verificationPage, path, router]);
   const signIn = (state: AuthState) => {
     setAuth(state);
     setUser(state.user);
@@ -92,7 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   };
   let content: React.ReactNode;
-  if (loading)
+  if (verificationPage) content = children;
+  else if (loading)
     content = (
       <main className="auth-page" role="status">
         Restoring your session…

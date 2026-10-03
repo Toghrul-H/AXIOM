@@ -23,6 +23,26 @@ class LoginCredentials(Credentials):
             return normalized
         return handler(value)
 
+INF_MESSAGE = 'Please register using your ELTE Faculty of Informatics email address (@inf.elte.hu).'
+
+class RegistrationCredentials(Credentials):
+    @field_validator('email')
+    @classmethod
+    def require_inf_domain(cls, value):
+        if str(value).rsplit('@', 1)[-1].lower() != 'inf.elte.hu':
+            raise ValueError(INF_MESSAGE)
+        return value
+
+class VerificationInput(Schema):
+    token: SecretStr = Field(min_length=43, max_length=43)
+
+class ResendInput(Schema):
+    email: EmailStr = Field(max_length=254)
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalize_email(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
 class UserRead(Schema):
     id:int
     email:str

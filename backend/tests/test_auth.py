@@ -25,7 +25,7 @@ def client():
     _failures.clear()
 
 def test_registration_login_logout_and_normalization(client):
-    email=f'auth-{uuid4().hex}@example.com'
+    email=f'auth-{uuid4().hex}@inf.elte.hu'
     payload={'email':'  '+email.upper()+'  ','password':TEST_PASSWORD}
     try:
         registered=client.post('/auth/register',json=payload)
@@ -38,6 +38,10 @@ def test_registration_login_logout_and_normalization(client):
             stored=s.get(User,user['id'])
             assert stored.password_hash.startswith('$argon2id$')
             assert stored.password_hash!=TEST_PASSWORD and passwords.verify(TEST_PASSWORD,stored.password_hash)
+            # Verification lifecycle is exercised in test_email_verification.py.
+            assert not stored.email_verified
+            stored.email_verified=True
+            s.commit()
         assert client.post('/auth/login',json={**payload,'password':'incorrect-password'}).status_code==401
         login=client.post('/auth/login',json=payload)
         assert login.status_code==200

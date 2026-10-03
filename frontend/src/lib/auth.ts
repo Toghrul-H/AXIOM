@@ -47,11 +47,25 @@ export async function authRequest<T>(
   });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(
+    throw new AuthRequestError(
+      response.status,
       typeof data?.detail === "string"
         ? data.detail
-        : "Check your email and password (12–128 characters), then try again.",
+        : Array.isArray(data?.detail)
+          ? data.detail
+              .map((item: { msg?: string }) => item.msg ?? "Invalid input")
+              .join(" ")
+          : "Check your email and password (12–128 characters), then try again.",
     );
   }
   return response.status === 204 ? (undefined as T) : response.json();
+}
+
+export class AuthRequestError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }

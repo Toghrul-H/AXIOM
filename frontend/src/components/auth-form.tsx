@@ -1,18 +1,21 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { authRequest, type AuthState } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import { authRequest, AuthRequestError, type AuthState } from "@/lib/auth";
 import { useAuth } from "./auth-provider";
 import { Wordmark } from "./wordmark";
 
 export function AuthForm({ register = false }: { register?: boolean }) {
   const { signIn } = useAuth();
+  const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNeedsVerification(false);
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email")).trim();
     const password = String(form.get("password"));
@@ -24,7 +27,7 @@ export function AuthForm({ register = false }: { register?: boolean }) {
     try {
       if (register) {
         await authRequest("/auth/register", "POST", { email, password });
-        setCreated(true);
+        router.replace("/check-email?registered=1");
       } else
         signIn(
           await authRequest<AuthState>("/auth/login", "POST", {
@@ -33,6 +36,11 @@ export function AuthForm({ register = false }: { register?: boolean }) {
           }),
         );
     } catch (e) {
+      setNeedsVerification(
+        e instanceof AuthRequestError &&
+          e.status === 403 &&
+          e.message === "Verify your email before signing in",
+      );
       setError(e instanceof Error ? e.message : "Unable to sign in.");
     } finally {
       setBusy(false);
@@ -66,18 +74,11 @@ export function AuthForm({ register = false }: { register?: boolean }) {
             {register ? "JOIN YOUR COURSE" : "WELCOME BACK"}
           </p>
           <h1>{register ? "Create your account" : "Sign in"}</h1>
-          {created ? (
-            <div role="status">
-              <p>Your Student account is ready.</p>
-              <Link className="button button-primary" href="/login">
-                Continue to sign in
-              </Link>
-            </div>
-          ) : (
+          {
             <>
               <p>
                 {register
-                  ? "Register to start learning and keep your quiz history."
+                  ? "Please register using your ELTE Faculty of Informatics email address (@inf.elte.hu)."
                   : "Continue to your course workspace."}
               </p>
               <form onSubmit={submit} className="auth-form">
@@ -127,6 +128,9 @@ export function AuthForm({ register = false }: { register?: boolean }) {
                     {error}
                   </p>
                 )}
+                {needsVerification && (
+                  <Link href="/check-email">Resend verification email</Link>
+                )}
                 <button className="button button-primary" disabled={busy}>
                   {busy
                     ? "Please wait…"
@@ -142,7 +146,7 @@ export function AuthForm({ register = false }: { register?: boolean }) {
                 </Link>
               </p>
             </>
-          )}
+          }
         </section>
         <p className="auth-form-footer">AXIOM · Discrete Mathematics I</p>
       </div>

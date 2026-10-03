@@ -13,6 +13,9 @@ class User(Base):
     role: Mapped[str]=mapped_column(String(20),default='STUDENT',server_default='STUDENT')
     is_active: Mapped[bool]=mapped_column(Boolean,default=True,server_default='true')
     is_legacy: Mapped[bool]=mapped_column(Boolean,default=False,server_default='false')
+    is_system_managed: Mapped[bool]=mapped_column(Boolean,default=False,server_default='false')
+    # Trusted provisioning remains usable; public registration explicitly sets False.
+    email_verified: Mapped[bool]=mapped_column(Boolean,default=True,server_default='true')
     created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now())
     updated_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
 
@@ -23,3 +26,10 @@ class AuthSession(Base):
     csrf_token: Mapped[str]=mapped_column(String(64))
     created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now())
     expires_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),index=True)
+
+class EmailVerification(Base):
+    __tablename__='email_verifications'
+    user_id: Mapped[int]=mapped_column(ForeignKey('users.id',ondelete='CASCADE'),primary_key=True)
+    token_hash: Mapped[str]=mapped_column(String(64),unique=True)
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now())
+    expires_at: Mapped[datetime]=mapped_column(DateTime(timezone=True))

@@ -23,10 +23,6 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/auth/:path*",
-        destination: `${apiUrl.replace(/\/$/, "")}/auth/:path*`,
-      },
-      {
         source: "/api/quizzes/:path*",
         destination: `${apiUrl.replace(/\/$/, "")}/quizzes/:path*`,
       },
