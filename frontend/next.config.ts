@@ -27,10 +27,6 @@ const nextConfig: NextConfig = {
         destination: `${apiUrl.replace(/\/$/, "")}/auth/:path*`,
       },
       {
-        source: "/api/users/:path*",
-        destination: `${apiUrl.replace(/\/$/, "")}/users/:path*`,
-      },
-      {
         source: "/api/quizzes/:path*",
         destination: `${apiUrl.replace(/\/$/, "")}/quizzes/:path*`,
       },
