@@ -73,6 +73,10 @@ class ActiveAttempt(AttemptSummary):
     items: list[ActiveItem]
 
 class ReviewItem(ActiveItem):
+    manual_grading_status: Literal['NOT_APPLICABLE', 'PENDING', 'COMPLETED']
+    manual_points: int | None
+    manual_feedback: str | None
+    graded_at: datetime | None
     answered: bool
     auto_gradable: bool
     is_correct: bool | None

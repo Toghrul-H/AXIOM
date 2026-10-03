@@ -59,7 +59,7 @@ def factory(client, metadata):
 def test_database_and_metadata(metadata):
     with get_engine().connect() as connection:
         assert connection.scalar(text("SELECT version()" )).startswith("PostgreSQL")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0006"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
     assert len(metadata["problem_sets"]) == 12
     assert {r["code"] for r in metadata["response_types"]} == {"FREE_RESPONSE", "SINGLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE"}
     assert {t["name"] for t in metadata["topics"] if t["parent_id"] is None} >= {"Foundations", "Complex Numbers", "Combinatorics", "Graphs"}

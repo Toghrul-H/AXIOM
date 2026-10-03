@@ -59,6 +59,7 @@ class AttemptAnswer(Base):
         UniqueConstraint('quiz_attempt_id','position',name='uq_attempt_answers_position'),
         CheckConstraint('position >= 0 AND points > 0',name='ck_attempt_answers_position_points'),
         CheckConstraint('points_awarded IS NULL OR (points_awarded >= 0 AND points_awarded <= points)',name='ck_attempt_answers_awarded'),
+        CheckConstraint("(manual_points IS NULL AND manual_feedback IS NULL AND graded_by_id IS NULL AND graded_at IS NULL) OR (response_type = 'FREE_RESPONSE' AND manual_points IS NOT NULL AND manual_points >= 0 AND manual_points <= points AND graded_by_id IS NOT NULL AND graded_at IS NOT NULL)", name='ck_attempt_answers_manual_grade'),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     quiz_attempt_id: Mapped[UUID] = mapped_column(ForeignKey('quiz_attempts.id',ondelete='CASCADE'),index=True)
@@ -78,6 +79,10 @@ class AttemptAnswer(Base):
     free_response: Mapped[str | None] = mapped_column(Text)
     is_correct: Mapped[bool | None] = mapped_column(Boolean)
     points_awarded: Mapped[int | None]
+    manual_points: Mapped[int | None]
+    manual_feedback: Mapped[str | None] = mapped_column(Text)
+    graded_by_id: Mapped[int | None] = mapped_column(ForeignKey('users.id', ondelete='RESTRICT'), index=True)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     options: Mapped[list['AttemptOption']] = relationship(cascade='all, delete-orphan',passive_deletes=True,lazy='selectin',order_by='AttemptOption.position')
 
 

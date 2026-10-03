@@ -79,6 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         },
         { href: "/teacher/questions/new", label: "Add Question", icon: Plus },
         { href: "/teacher/quizzes", label: "Quiz management", icon: Shapes },
+        { href: "/teacher/grading", label: "Manual Grading", icon: BookOpen },
       ]
     : [
         { href: "/student", label: "Dashboard", icon: LayoutDashboard },
@@ -97,6 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       icon: GraduationCap,
     });
   const current =
+    (path.startsWith("/teacher/grading/") ? "Manual Grading" : undefined) ??
     links.find((item) => item.href === path)?.label ??
     futureTools.find((item) => path === `/teacher/tools/${item.slug}`)?.title ??
     (path.includes("/quizzes/")

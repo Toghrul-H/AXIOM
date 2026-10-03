@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { quizzesApi, Review, ReviewItem } from "@/lib/quizzes";
 import { PageHeading } from "./page-heading";
+import { ManualGradeFeedback } from "./manual-grade-feedback";
 export function QuizResults({
   id,
   allAnswers = false,
@@ -12,6 +13,12 @@ export function QuizResults({
 }) {
   const [data, setData] = useState<Review | null>(null);
   const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  function refresh() {
+    setData(null);
+    setError("");
+    setRevision((value) => value + 1);
+  }
   useEffect(() => {
     let live = true;
     quizzesApi
@@ -25,11 +32,14 @@ export function QuizResults({
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, revision]);
   if (error)
     return (
       <p role="alert" className="error-message">
         {error}{" "}
+        <button className="button button-secondary" onClick={refresh}>
+          Retry
+        </button>{" "}
         <Link href={`/student/quizzes/attempts/${id}`}>Return to attempt</Link>
       </p>
     );
@@ -58,6 +68,9 @@ export function QuizResults({
           graded.
         </p>
         <div className="quiz-actions">
+          <button className="button button-secondary" onClick={refresh}>
+            Refresh results
+          </button>
           {!allAnswers && (
             <Link
               className="button button-primary"
@@ -110,6 +123,7 @@ export function QuizResults({
                   {item.points_awarded} / {item.points} points
                 </p>
               )}
+              <ManualGradeFeedback item={item} />
             </article>
           ))}
         </div>

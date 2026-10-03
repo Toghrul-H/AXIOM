@@ -144,6 +144,8 @@ def review(attempt: QuizAttempt) -> dict:
         result['unanswered_objective_count'] += objective and not answered(item)
         result['items'].append(dict(**ActiveItem.model_validate(item).model_dump(),answered=answered(item),
             auto_gradable=objective,is_correct=item.is_correct,points_awarded=item.points_awarded,
+            manual_grading_status='NOT_APPLICABLE' if objective else ('PENDING' if item.manual_points is None else 'COMPLETED'),
+            manual_points=item.manual_points,manual_feedback=item.manual_feedback,graded_at=item.graded_at,
             correct_option_ids=[o.id for o in item.options if o.is_correct],correct_boolean=item.correct_boolean,
             expected_answer=item.expected_answer,explanation=item.explanation))
     return result

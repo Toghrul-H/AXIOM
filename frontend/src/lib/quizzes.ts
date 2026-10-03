@@ -47,6 +47,10 @@ export type AttemptItem = Answer & {
 };
 export type Attempt = AttemptSummary & { items: AttemptItem[] };
 export type ReviewItem = AttemptItem & {
+  manual_grading_status: "NOT_APPLICABLE" | "PENDING" | "COMPLETED";
+  manual_points: number | null;
+  manual_feedback: string | null;
+  graded_at: string | null;
   answered: boolean;
   auto_gradable: boolean;
   is_correct: boolean | null;
