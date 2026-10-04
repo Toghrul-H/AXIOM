@@ -2,14 +2,27 @@
 import argparse
 from getpass import getpass
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from app.auth import revoke_user_sessions
+from app.auth import passwords, revoke_user_sessions
 from app.auth_models import User, EmailVerification
 from app.auth_schemas import Credentials, ResendInput
 from app.database import get_engine
 from app.scripts.create_admin import bootstrap_admin
+
+def create_system_admin(session: Session, credentials: Credentials) -> int:
+    # Coordinate with initial bootstrap; intentionally do not require zero Admins.
+    session.execute(text('SELECT pg_advisory_xact_lock(184271905)'))
+    email = str(credentials.email)
+    if session.scalar(select(User.id).where(User.email == email)) is not None:
+        raise ValueError('This email is already registered; nothing changed.')
+    user = User(email=email,
+                password_hash=passwords.hash(credentials.password.get_secret_value()),
+                role='ADMIN', is_system_managed=True, email_verified=True, is_active=True)
+    session.add(user)
+    session.flush()
+    return user.id
 
 def create_protected_admin(session: Session, credentials: Credentials) -> int:
     # Preserve the existing first-admin-only rule and advisory lock.
@@ -39,25 +52,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='action', required=True)
     commands.add_parser('create-admin', help='Create the first Admin as protected and verified; refuses if any Admin exists.')
+    commands.add_parser('create-system-admin', help='Deliberately create an additional protected, verified, active ADMIN; existing Admins are allowed.')
     protect = commands.add_parser('protect', help='Protect and verify an existing active account; preserve role/password and revoke sessions.')
     protect.add_argument('--user-id', type=int, required=True)
     args = parser.parse_args()
     try:
         email = str(ResendInput(email=input('Exact account email: ')).email)
         credentials = None
-        if args.action == 'create-admin':
+        if args.action in {'create-admin', 'create-system-admin'}:
             password = getpass('New administrator password (12–128 characters): ')
             if password != getpass('Confirm password: '):
                 raise ValueError('Passwords do not match.')
             credentials = Credentials(email=email, password=password)
         engine = get_engine()
         print(f'Target database: {engine.url.host}:{engine.url.port}/{engine.url.database}')
-        print(f'{args.action}: {email}' + (f' (ID {args.user_id})' if args.action == 'protect' else ' (first ADMIN only)'))
+        detail = f' (ID {args.user_id})' if args.action == 'protect' else (
+            ' (additional ADMIN allowed)' if args.action == 'create-system-admin' else ' (first ADMIN only)')
+        print(f'{args.action}: {email}' + detail)
         print('Account will be protected and email-verified. Existing role/password are preserved when protecting; sessions are revoked.')
         if input('Type PROTECT to confirm private owner authorization: ') != 'PROTECT':
             raise ValueError('Cancelled; nothing changed.')
         with Session(engine) as session, session.begin():
-            if credentials is not None:
+            if args.action == 'create-system-admin':
+                user_id = create_system_admin(session, credentials)
+            elif credentials is not None:
                 user_id = create_protected_admin(session, credentials)
             else:
                 user_id = protect_existing(session, args.user_id, email)

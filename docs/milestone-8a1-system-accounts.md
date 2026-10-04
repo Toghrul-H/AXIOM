@@ -17,16 +17,23 @@ From `backend`, with the intended database configured privately:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.scripts.system_accounts create-admin
+.\.venv\Scripts\python.exe -m app.scripts.system_accounts create-system-admin
 .\.venv\Scripts\python.exe -m app.scripts.system_accounts protect --user-id 123
 ```
 
-Use the actual selected ID instead of 123. Both commands prompt for the exact
+Use the actual selected ID instead of 123. All commands prompt for the exact
 email, print the target database and operation, and require typing `PROTECT`.
 Passwords are requested privately with confirmation, never through CLI arguments.
 
 `create-admin` preserves the existing serialized **first-admin-only** bootstrap
 rule: it refuses if any Admin exists or the email is already registered. If an
 Admin already exists, use `protect` to intentionally protect that account.
+Alternatively, `create-system-admin` deliberately creates a separate ADMIN even
+when Admins already exist. It rejects duplicate normalized emails, uses normal
+password hashing, and explicitly sets active, verified and system-managed flags.
+It requires the same private password confirmation and `PROTECT` authorization;
+the preview explicitly says additional Admins are allowed. Initial `create-admin`
+bootstrap restrictions remain unchanged. Neither command sends email.
 `protect` requires matching ID and email, rejects inactive/legacy/passwordless
 accounts, preserves role/password, marks the email verified, removes pending
 verification tokens and revokes sessions. It can also protect a Student without

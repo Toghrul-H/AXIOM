@@ -12,11 +12,43 @@ from app.main import app
 from app.database import get_engine
 from app.auth_models import User, EmailVerification
 from app.auth_schemas import Credentials
-from app.scripts.system_accounts import create_protected_admin, protect_existing
+from app.scripts.system_accounts import create_protected_admin, create_system_admin, protect_existing
 from app.services.email_verification import issue_verification
 from conftest import TEST_PASSWORD
 
 pytestmark = [pytest.mark.integration, pytest.mark.skipif(os.getenv('RUN_POSTGRES_TESTS') != '1', reason='Requires local PostgreSQL')]
+
+def test_additional_system_admin_and_duplicate_rejection(accounts):
+    accounts('ADMIN')
+    email = f'owner-{uuid4().hex}@example.com'
+    # Roll back the entire fixture; no permanent operator account is created.
+    with Session(get_engine()) as session:
+        try:
+            credentials = Credentials(email='  ' + email.upper() + '  ', password=TEST_PASSWORD)
+            uid = create_system_admin(session, credentials)
+            user = session.get(User, uid)
+            assert user.email == email and user.role == 'ADMIN'
+            assert user.is_system_managed and user.email_verified and user.is_active
+            from app.auth import passwords
+            assert passwords.verify(TEST_PASSWORD, user.password_hash)
+            with pytest.raises(ValueError, match='already registered'):
+                create_system_admin(session, credentials)
+            with pytest.raises(ValueError, match='already exists'):
+                create_protected_admin(session, Credentials(email=f'other-{uuid4().hex}@example.com', password=TEST_PASSWORD))
+        finally:
+            session.rollback()
+
+def test_additional_admin_cli_requires_confirmation(monkeypatch, capsys):
+    from app.scripts import system_accounts
+    monkeypatch.setattr('sys.argv', ['system_accounts', 'create-system-admin'])
+    answers = iter(['operator@example.com', 'cancel'])
+    monkeypatch.setattr('builtins.input', lambda prompt: next(answers))
+    monkeypatch.setattr(system_accounts, 'getpass', lambda prompt: TEST_PASSWORD)
+    monkeypatch.setattr(system_accounts, 'create_system_admin', lambda *args: pytest.fail('Must not create without confirmation'))
+    with pytest.raises(SystemExit, match='Cancelled'):
+        system_accounts.main()
+    output = capsys.readouterr().out
+    assert 'additional ADMIN allowed' in output and TEST_PASSWORD not in output
 
 @pytest.mark.parametrize('manager_role', ['ADMIN', 'LECTURER'])
 def test_hidden_from_listing_search_and_direct_management(accounts, manager_role):
