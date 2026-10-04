@@ -42,6 +42,34 @@ def test_smtp_error_sanitized(caplog):
         send_verification_email('student@inf.elte.hu', 'complete-token')
     assert 'private-secret' not in str(error.value) + caplog.text
     assert 'complete-token' not in str(error.value) + caplog.text
+    assert 'exception=SMTPAuthenticationError' in caplog.text
+    assert 'smtp_code=535' in caplog.text
+    assert 'SMTP authentication rejected' in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+@pytest.mark.parametrize('failure, expected', [
+    (TimeoutError('private-secret complete-token'), 'timed out'),
+    (ConnectionRefusedError(111, 'private-secret'), 'connection refused'),
+    (smtplib.SMTPRecipientsRefused({'private-recipient@example.com': (550, b'complete-token')}), 'recipient rejected'),
+])
+def test_safe_failure_diagnostics(caplog, failure, expected):
+    smtplib.SMTP.side_effect = failure
+    with pytest.raises(DeliveryUnavailable):
+        send_verification_email('private-recipient@example.com', 'complete-token')
+    assert expected in caplog.text and 'stage=connect' in caplog.text
+    for secret in ['private-secret', 'complete-token', 'private-recipient@example.com', 'test-only-smtp-secret']:
+        assert secret not in caplog.text
+
+def test_tls_failure_stage_and_no_raw_message(caplog):
+    import ssl
+    smtp = smtplib.SMTP.return_value.__enter__.return_value
+    smtp.starttls.side_effect = ssl.SSLCertVerificationError('private-secret')
+    with pytest.raises(DeliveryUnavailable):
+        send_verification_email('student@inf.elte.hu', 'complete-token')
+    assert 'stage=starttls' in caplog.text
+    assert 'exception=SSLCertVerificationError' in caplog.text
+    assert 'private-secret' not in caplog.text
+    smtp.login.assert_not_called()
 
 @pytest.mark.integration
 @pytest.mark.skipif(os.getenv('RUN_POSTGRES_TESTS') != '1', reason='Requires local PostgreSQL')
