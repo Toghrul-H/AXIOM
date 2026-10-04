@@ -5,8 +5,8 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from email.utils import formataddr
-from urllib.parse import urlencode
 from app.config import get_settings
+from app.services.email_delivery import DeliveryUnavailable, verification_body
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +39,6 @@ def log_delivery_failure(error: Exception, stage: str) -> None:
     logger.error('Email delivery failed: stage=%s exception=%s message=%s smtp_code=%s errno=%s',
                  stage, kind, message, code, number)
 
-class DeliveryUnavailable(Exception):
-    pass
-
 def send_verification_email(email: str, token: str) -> None:
     settings = get_settings()
     if not all([settings.smtp_host, settings.smtp_username,
@@ -59,13 +56,8 @@ def send_verification_email(email: str, token: str) -> None:
         message['Subject'] = 'Verify your AXIOM account'
         message['From'] = formataddr((settings.email_from_name, settings.email_from_address))
         message['To'] = email
-        link = settings.frontend_base_url + '/verify-email?' + urlencode({'token': token})
         message.set_content(
-            'Welcome to AXIOM — Discrete Mathematics.\n\n'
-            'Please verify your email address to complete your registration:\n\n'
-            f'{link}\n\n'
-            'This link expires in one hour and can be used only once.\n'
-            'If you did not register for AXIOM, you can ignore this email.\n',
+            verification_body(settings.frontend_base_url, token),
             charset='utf-8',
         )
         context = ssl.create_default_context()

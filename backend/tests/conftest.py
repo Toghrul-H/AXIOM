@@ -18,6 +18,9 @@ def disable_real_smtp(monkeypatch):
     import smtplib
     from app.config import get_settings
     settings = get_settings()
+    monkeypatch.setattr(settings, 'email_delivery_provider', 'smtp')
+    # Never allow an unmocked Brevo request from any automated test.
+    monkeypatch.setattr('http.client.HTTPSConnection', lambda *args, **kwargs: pytest.fail('Real HTTPS delivery forbidden in tests'))
     for key, value in {'smtp_host':'smtp.example.test', 'smtp_username':'test',
                        'email_from_address':'sender@example.com',
                        'frontend_base_url':'http://127.0.0.1:3000'}.items():

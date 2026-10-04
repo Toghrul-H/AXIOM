@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 from pathlib import Path
 
 from pydantic import Field, SecretStr, EmailStr, TypeAdapter, field_validator
@@ -20,6 +21,9 @@ class Settings(BaseSettings):
     database_user: str = "dmi_app"
     database_password: SecretStr = SecretStr("")
     auth_cookie_secure: bool = False
+    email_delivery_provider: Literal['smtp', 'brevo'] = 'smtp'
+    brevo_api_key: SecretStr = SecretStr('')
+    email_http_timeout_seconds: int = Field(default=10, ge=1, le=60)
     smtp_host: str = ''
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_username: str = ''

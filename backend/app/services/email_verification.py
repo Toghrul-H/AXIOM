@@ -13,6 +13,10 @@ class VerificationDelivery(Protocol):
     def __call__(self, email: str, token: str) -> None: ...
 
 def get_verification_delivery() -> VerificationDelivery:
+    from app.config import get_settings
+    if get_settings().email_delivery_provider == 'brevo':
+        from app.services.brevo_delivery import send_verification_email
+        return send_verification_email
     from app.services.smtp_delivery import send_verification_email
     return send_verification_email
 

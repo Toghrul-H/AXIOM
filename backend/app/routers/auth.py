@@ -9,7 +9,7 @@ from app.auth_models import User,AuthSession
 from app.auth_schemas import Credentials,LoginCredentials,UserRead,AuthRead,RoleChange,StatusChange
 from app.auth_schemas import RegistrationCredentials,VerificationInput,ResendInput
 from app.services.email_verification import VerificationDelivery,get_verification_delivery,issue_verification,verify_email
-from app.services.smtp_delivery import DeliveryUnavailable
+from app.services.email_delivery import DeliveryUnavailable
 
 router=APIRouter(tags=['Authentication and users'])
 DB=Annotated[Session,Depends(get_session)]
