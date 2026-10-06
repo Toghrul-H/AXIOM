@@ -84,7 +84,7 @@ def test_events_rooms_validation_and_cascade(setup):
     assert client.put(rp+f'/{rid}', headers=h, json={'room': 'Changed', 'groups': ['100']}).status_code == 409
     detail = client.get(path, headers=h).json()
     assert len(detail['events'][0]['rooms']) == 2
-    assert client.put(ep, headers=h, json={'event_type': 'MIDTERM'}).status_code == 409
+    assert client.put(ep, headers=h, json={'event_type': 'COURSEWORK_PUBLICATION'}).status_code == 409
     assert client.delete(rp+f'/{rid}', headers=h).status_code == 204
     assert client.delete(ep, headers=h).status_code == 204
     with Session(get_engine()) as session:
@@ -130,3 +130,26 @@ def test_0010_roundtrip_only_adds_owned_tables():
         finally:
             conn.execute(text('SET LOCAL search_path TO public'))
             conn.execute(DropSchema(schema, cascade=True))
+
+def test_rooms_are_scoped_to_each_applicable_event(setup):
+    client, h, cid, _, _ = setup()
+    path = f'{BASE}/{cid}'
+    event_ids = []
+    for kind in ['MIDTERM', 'ENDTERM', 'SHORT_QUIZ_RETAKE', 'TEST_RETAKE']:
+        response = client.post(path+'/events', headers=h, json={'event_type': kind})
+        assert response.status_code == 201
+        value = response.json()
+        assert value['venue'] is None and value['rooms'] == []
+        eid = value['id']; event_ids.append(eid)
+        rooms = f'{path}/events/{eid}/rooms'
+        assert client.post(rooms, headers=h, json={'room': kind+' room', 'groups': ['lab-A']}).status_code == 201
+        assert client.post(rooms, headers=h, json={'room': 'Other room', 'groups': ['lab-A']}).status_code == 409
+    # Moving among supported types keeps existing assignments.
+    assert client.delete(f'{path}/events/{event_ids[1]}', headers=h).status_code == 204
+    moved = client.put(f'{path}/events/{event_ids[0]}', headers=h, json={'event_type': 'ENDTERM'})
+    assert moved.status_code == 200 and len(moved.json()['rooms']) == 1
+    with Session(get_engine()) as session:
+        assert session.scalar(select(func.count()).select_from(AssessmentRoomGroup).where(AssessmentRoomGroup.event_id == event_ids[1])) == 0
+    assert client.delete(path, headers=h).status_code == 204
+    with Session(get_engine()) as session:
+        assert session.scalar(select(func.count()).select_from(AssessmentRoomGroup).where(AssessmentRoomGroup.event_id.in_(event_ids))) == 0

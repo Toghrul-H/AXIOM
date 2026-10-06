@@ -12,6 +12,12 @@ export const eventLabels = {
   COURSEWORK_RETAKE_HAND_IN: "Coursework retake hand-in",
 } as const;
 export type EventType = keyof typeof eventLabels;
+export const roomEventTypes: readonly EventType[] = [
+  "MIDTERM",
+  "ENDTERM",
+  "SHORT_QUIZ_RETAKE",
+  "TEST_RETAKE",
+];
 export type Semester = {
   id: number;
   academic_year_start: number;

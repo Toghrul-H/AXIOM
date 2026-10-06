@@ -10,6 +10,7 @@ import {
   eventInput,
   roomInput,
   eventLabels,
+  roomEventTypes,
   type Semester,
   type Detail,
   type AssessmentEvent,
@@ -418,7 +419,7 @@ function EventEditor({
           All schedule fields are optional. Times use the local campus clock.
         </p>
       </EditForm>
-      {type === "ENDTERM" &&
+      {roomEventTypes.includes(type) &&
         (value ? (
           <Rooms
             event={value}
@@ -432,7 +433,10 @@ function EventEditor({
             }
           />
         ) : (
-          <p>Save the endterm details before assigning rooms.</p>
+          <p>
+            Room assignments are optional. Save this assessment before assigning
+            rooms.
+          </p>
         ))}
     </section>
   );
@@ -450,6 +454,9 @@ function Rooms({
   return (
     <section>
       <h3>Practice group room assignments</h3>
+      <p>
+        Optional. Leave empty if room assignments have not been announced yet.
+      </p>
       {!event.rooms.length && <p>No rooms assigned yet.</p>}
       {event.rooms.map((room) => (
         <div className="panel" key={room.id}>

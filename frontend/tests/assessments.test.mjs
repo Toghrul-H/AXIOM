@@ -67,6 +67,41 @@ function form(values) {
   for (const [k, v] of Object.entries(values)) result.set(k, v);
   return result;
 }
+for (const type of Object.keys(lib().eventLabels)) {
+  test(`room section applicability: ${type}`, () => {
+    const component = ui(() => {});
+    const tree = component.EventEditor({
+      type,
+      value: { id: 9, event_type: type, rooms: [] },
+      base: "/7",
+      update: () => {},
+    });
+    const expected = [
+      "MIDTERM",
+      "ENDTERM",
+      "SHORT_QUIZ_RETAKE",
+      "TEST_RETAKE",
+    ].includes(type);
+    assert.equal(
+      nodes(tree).some((n) => n.type === component.Rooms),
+      expected,
+    );
+    if (expected) {
+      const roomTree = component.Rooms({
+        event: { rooms: [] },
+        path: "/7/events/9/rooms",
+        update: () => {},
+      });
+      assert.ok(
+        nodes(roomTree).some(
+          (n) =>
+            typeof n.props?.children === "string" &&
+            n.props.children.startsWith("Optional. Leave empty"),
+        ),
+      );
+    }
+  });
+}
 for (const role of ["LECTURER", "ADMIN", "STUDENT", "DEMONSTRATOR"]) {
   test(`${role} assessment page access`, () => {
     const component = ui(() => {}, role);

@@ -11,6 +11,7 @@ from app.assessment_models import AssessmentConfiguration, AssessmentEvent, Asse
 from app.assessment_schemas import ConfigurationCreate, ConfigurationPatch, ConfigurationRead, ConfigurationDetail, EventWrite, EventRead, RoomWrite, RoomRead
 
 router = APIRouter(prefix='/assessment-configurations', tags=['Semester assessment configuration'])
+ROOM_EVENT_TYPES = frozenset({'MIDTERM', 'ENDTERM', 'SHORT_QUIZ_RETAKE', 'TEST_RETAKE'})
 DB = Annotated[Session, Depends(get_session)]
 Manager = Annotated[User, Depends(manager_user)]
 Id = Annotated[int, Path(gt=0)]
@@ -97,8 +98,8 @@ def create_event(configuration_id: Id, payload: EventWrite, session: DB, actor: 
 def update_event(configuration_id: Id, event_id: Id, payload: EventWrite, session: DB, actor: Manager):
     parent = configuration(session, configuration_id, actor)
     result = event(session, parent.id, event_id)
-    if payload.event_type != 'ENDTERM' and result.rooms:
-        raise HTTPException(409, 'Remove endterm room assignments before changing event type')
+    if payload.event_type not in ROOM_EVENT_TYPES and result.rooms:
+        raise HTTPException(409, 'Remove room assignments before changing to an event type without room assignments')
     for key, value in payload.model_dump().items():
         setattr(result, key, value)
     touch(parent, actor)
@@ -114,8 +115,8 @@ def delete_event(configuration_id: Id, event_id: Id, session: DB, actor: Manager
     commit(session)
 
 def save_room(session, parent, assessment, actor, payload, result=None):
-    if assessment.event_type != 'ENDTERM':
-        raise HTTPException(422, 'Room/group assignments belong to the endterm event')
+    if assessment.event_type not in ROOM_EVENT_TYPES:
+        raise HTTPException(422, 'Room/group assignments are not supported for this event type')
     if result is None:
         result = AssessmentRoom(event_id=assessment.id, room=payload.room)
         session.add(result)
