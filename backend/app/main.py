@@ -18,6 +18,8 @@ app.include_router(quiz_router)
 app.include_router(auth_router)
 app.include_router(progress_router)
 app.include_router(manual_grading_router)
+from app.routers.assessments import router as assessments_router
+app.include_router(assessments_router)
 
 
 @app.middleware("http")

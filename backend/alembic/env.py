@@ -5,6 +5,7 @@ from app.database import Base, get_engine
 from app.models import Question  # Register models in migration metadata.
 from app.quiz_models import Quiz
 from app.auth_models import User, AuthSession
+from app.assessment_models import AssessmentConfiguration
 
 target_metadata = Base.metadata
 
