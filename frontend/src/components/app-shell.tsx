@@ -97,7 +97,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       label: "Staff Management",
       icon: GraduationCap,
     });
+  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+    links.push({
+      href: "/teacher/assessments",
+      label: "Assessment Documents",
+      icon: BookOpen,
+    });
   const current =
+    (path.startsWith("/teacher/assessments")
+      ? "Assessment Documents"
+      : undefined) ??
     (path.startsWith("/teacher/grading/") ? "Manual Grading" : undefined) ??
     links.find((item) => item.href === path)?.label ??
     futureTools.find((item) => path === `/teacher/tools/${item.slug}`)?.title ??

@@ -1883,3 +1883,25 @@ textarea:focus {
   font-size: 17px;
   overflow-wrap: anywhere;
 }
+
+/* Assessment forms reuse AXIOM controls and colors. */
+.assessment-form fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+.assessment-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 1rem;
+}
+.assessment-form input,
+.assessment-form textarea,
+.assessment-form select {
+  max-width: 100%;
+}
+.assessment-form textarea {
+  min-height: 5rem;
+}

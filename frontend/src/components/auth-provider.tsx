@@ -117,7 +117,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const forbidden =
       (staffPath && user.role === "STUDENT") ||
       (path.startsWith("/student") && user.role !== "STUDENT") ||
-      (path.startsWith("/teacher/users") &&
+      ((path.startsWith("/teacher/users") ||
+        path.startsWith("/teacher/assessments")) &&
         !["LECTURER", "ADMIN"].includes(user.role));
     content = (
       <AppShell>
