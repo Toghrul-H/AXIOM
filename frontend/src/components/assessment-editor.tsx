@@ -5,6 +5,16 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import {
+  policyLabels,
+  policyTextFields,
+  policyNumberFields,
+  rulesTextFields,
+  policyInput,
+  rulesInput,
+  type Policy,
+  type Rules,
+  type PolicyCode,
+  type SubmissionDeadline,
   assessmentRequest,
   canManageAssessments,
   eventInput,
@@ -119,6 +129,15 @@ function EditForm({
     <form
       className="auth-form assessment-form"
       onSubmit={submit}
+      onClick={(e) => {
+        if (
+          e.target instanceof Element &&
+          e.target.closest("[data-assessment-change]")
+        ) {
+          setDirty(true);
+          setNotice("");
+        }
+      }}
       onChange={() => {
         setDirty(true);
         setNotice("");
@@ -388,8 +407,10 @@ function EventEditor({
           {(
             [
               ["date", "Date", "date"],
-              ["start_time", "Start time", "time"],
-              ["end_time", "End time", "time"],
+              ["start_time", "Scheduled start time", "time"],
+              ["end_time", "Scheduled end time", "time"],
+              ["writing_start_time", "Actual writing start time", "time"],
+              ["writing_end_time", "Actual writing end time", "time"],
               ["venue", "Venue", "text"],
               ["document_date", "Document date", "date"],
               ["latest_arrival_time", "Latest arrival time", "time"],
@@ -407,6 +428,19 @@ function EventEditor({
             </label>
           ))}
         </div>
+        <label>
+          Seating plan (optional; describe rows, columns or arrangements by
+          retake type)
+          <textarea
+            name="seating_plan"
+            maxLength={20000}
+            defaultValue={value?.seating_plan ?? ""}
+          />
+        </label>
+        {(type === "COURSEWORK_HAND_IN" ||
+          type === "COURSEWORK_RETAKE_HAND_IN") && (
+          <SubmissionFields value={value} />
+        )}
         <label>
           Notes (optional)
           <textarea
@@ -588,6 +622,41 @@ export function AssessmentDetail({ id }: { id: string }) {
           <MetadataFields value={data} />
         </EditForm>
       </details>
+      <SemesterRules base={`/${id}`} />
+      <section className="panel quiz-panel">
+        <h2>Shared assessment policies</h2>
+        <p>
+          Configure each component once for all documents and its retakes. Leave
+          unknown values empty. Maximum and passing scores refer to the whole
+          component, not one short quiz. These settings describe the course;
+          they do not grade student attempts.
+        </p>
+        {(Object.keys(policyLabels) as PolicyCode[]).map((code) => (
+          <details key={code}>
+            <summary>{policyLabels[code]}</summary>
+            <PolicyEditor
+              code={code}
+              value={data.policies?.find((p) => p.code === code)}
+              base={`/${id}`}
+              update={(saved) =>
+                setData((current) =>
+                  current
+                    ? {
+                        ...current,
+                        policies: [
+                          ...(current.policies ?? []).filter(
+                            (p) => p.code !== code,
+                          ),
+                          saved,
+                        ],
+                      }
+                    : current,
+                )
+              }
+            />
+          </details>
+        ))}
+      </section>
       {(Object.keys(eventLabels) as EventType[]).map((type) => (
         <EventEditor
           key={type}
@@ -612,5 +681,287 @@ export function AssessmentDetail({ id }: { id: string }) {
         />
       ))}
     </>
+  );
+}
+
+function PolicyEditor({
+  code,
+  value,
+  base,
+  update,
+}: {
+  code: PolicyCode;
+  value?: Policy;
+  base: string;
+  update: (value: Policy) => void;
+}) {
+  return (
+    <EditForm
+      label={policyLabels[code]}
+      save={async (form) =>
+        update(
+          await assessmentRequest<Policy>(
+            `${base}/policies/${code}`,
+            "PUT",
+            policyInput(form),
+          ),
+        )
+      }
+    >
+      {(
+        Object.entries(policyTextFields) as [
+          keyof typeof policyTextFields,
+          string,
+        ][]
+      ).map(([name, label]) => (
+        <label key={name}>
+          {label}
+          <textarea
+            name={name}
+            maxLength={20000}
+            defaultValue={value?.[name] ?? ""}
+          />
+        </label>
+      ))}
+      <div className="assessment-fields">
+        {(
+          Object.entries(policyNumberFields) as [
+            keyof typeof policyNumberFields,
+            string,
+          ][]
+        ).map(([name, label]) => (
+          <label key={name}>
+            {label}
+            <input
+              name={name}
+              type="number"
+              min={
+                name === "duration_minutes" || name === "assessment_count"
+                  ? 1
+                  : 0
+              }
+              max={
+                name === "duration_minutes"
+                  ? 10080
+                  : name === "assessment_count"
+                    ? 1000
+                    : 100000
+              }
+              step={
+                name === "duration_minutes" || name === "assessment_count"
+                  ? 1
+                  : "0.01"
+              }
+              defaultValue={value?.[name] ?? ""}
+            />
+          </label>
+        ))}
+      </div>
+    </EditForm>
+  );
+}
+function SemesterRules({ base }: { base: string }) {
+  const [rules, setRules] = useState<Rules | null>(null),
+    [error, setError] = useState(""),
+    [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    assessmentRequest<Rules>(`${base}/rules`, "GET", undefined, abort.signal)
+      .then(setRules)
+      .catch((e) => {
+        if (!abort.signal.aborted) setError(e.message);
+      });
+    return () => abort.abort();
+  }, [base, revision]);
+  return (
+    <details className="panel quiz-panel">
+      <summary>Semester scoring and academic rules</summary>
+      {!rules ? (
+        error ? (
+          <p role="alert">
+            {error}{" "}
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => {
+                setError("");
+                setRevision((n) => n + 1);
+              }}
+            >
+              Retry
+            </button>
+          </p>
+        ) : (
+          <p role="status">Loading rules...</p>
+        )
+      ) : (
+        <>
+          <p>
+            All fields are optional. Describe plus-point tasks, fractional
+            awards, deadlines, eligibility and exceptional policies here. No
+            rules are inferred from earlier semesters.
+          </p>
+          <EditForm
+            label="semester rules"
+            save={async (form) =>
+              setRules(
+                await assessmentRequest<Rules>(
+                  `${base}/rules`,
+                  "PUT",
+                  rulesInput(form),
+                ),
+              )
+            }
+          >
+            {(
+              Object.entries(rulesTextFields) as [
+                keyof typeof rulesTextFields,
+                string,
+              ][]
+            ).map(([name, label]) => (
+              <label key={name}>
+                {label}
+                <textarea
+                  name={name}
+                  maxLength={20000}
+                  defaultValue={rules[name] ?? ""}
+                />
+              </label>
+            ))}
+            <label>
+              Maximum plus points
+              <input
+                name="plus_points_maximum"
+                type="number"
+                min={0}
+                max={100000}
+                step="0.01"
+                defaultValue={rules.plus_points_maximum ?? ""}
+              />
+            </label>
+            <h3>Grade minimum scores</h3>
+            <p>
+              Enter all five thresholds, starting grade 1 at zero, or leave all
+              empty. Each grade extends up to the next threshold (exclusive).
+              Course-passing conditions remain separate.
+            </p>
+            <div className="assessment-fields">
+              {[1, 2, 3, 4, 5].map((grade) => (
+                <label key={grade}>
+                  Grade {grade}
+                  <input
+                    name={`grade_${grade}`}
+                    type="number"
+                    min={0}
+                    max={100000}
+                    step="0.01"
+                    defaultValue={
+                      rules.grade_boundaries.find((b) => b.grade === grade)
+                        ?.minimum_score ?? ""
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </EditForm>
+        </>
+      )}
+    </details>
+  );
+}
+function SubmissionFields({ value }: { value?: AssessmentEvent }) {
+  const [rows, setRows] = useState<
+    { key: number; value?: SubmissionDeadline }[]
+  >(() =>
+    (value?.group_deadlines ?? []).map((row, key) => ({ key, value: row })),
+  );
+  const next = useRef(rows.length);
+  return (
+    <section>
+      <h3>Submission deadline and venue</h3>
+      <p>
+        These fields are separate from the scheduled interval. Group entries
+        override the general submission details; empty fields inherit the
+        general value. Use instructions for relative deadlines such as the
+        penultimate class.
+      </p>
+      <div className="assessment-fields">
+        {(
+          [
+            ["submission_deadline_date", "General deadline date", "date"],
+            ["submission_deadline_time", "General deadline time", "time"],
+            ["submission_venue", "Submission venue", "text"],
+          ] as const
+        ).map(([name, label, type]) => (
+          <label key={name}>
+            {label}
+            <input
+              name={name}
+              type={type}
+              step={type === "time" ? "any" : undefined}
+              maxLength={200}
+              defaultValue={value?.[name] ?? ""}
+            />
+          </label>
+        ))}
+      </div>
+      <label>
+        Submission instructions
+        <textarea
+          name="submission_instructions"
+          maxLength={20000}
+          defaultValue={value?.submission_instructions ?? ""}
+        />
+      </label>
+      <h4>Group-specific deadlines</h4>
+      {rows.map((row) => (
+        <div className="panel" key={row.key}>
+          {(
+            [
+              ["group_identifier", "group", "Practice group", "text"],
+              ["deadline_date", "date", "Deadline date", "date"],
+              ["deadline_time", "time", "Deadline time", "time"],
+              ["venue", "venue", "Submission venue", "text"],
+            ] as const
+          ).map(([field, name, label, type]) => (
+            <label key={field}>
+              {label}
+              <input
+                name={`deadline_${name}_${row.key}`}
+                type={type}
+                required={field === "group_identifier"}
+                step={type === "time" ? "any" : undefined}
+                maxLength={field === "group_identifier" ? 50 : 200}
+                defaultValue={row.value?.[field] ?? ""}
+              />
+            </label>
+          ))}
+          <label>
+            Instructions
+            <textarea
+              name={`deadline_instructions_${row.key}`}
+              maxLength={20000}
+              defaultValue={row.value?.instructions ?? ""}
+            />
+          </label>
+          <button
+            type="button"
+            className="button button-secondary"
+            data-assessment-change
+            onClick={() => setRows(rows.filter((r) => r.key !== row.key))}
+          >
+            Remove group deadline
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="button button-secondary"
+        data-assessment-change
+        onClick={() => setRows([...rows, { key: next.current++ }])}
+      >
+        Add group deadline
+      </button>
+    </section>
   );
 }

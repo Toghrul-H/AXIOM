@@ -47,7 +47,11 @@ function ui(api, role = "LECTURER", states = []) {
       react: {
         useEffect: () => {},
         useRef: (value) => ({ current: value }),
-        useState: (initial) => [states[cursor++] ?? initial, () => {}],
+        useState: (initial) => [
+          states[cursor++] ??
+            (typeof initial === "function" ? initial() : initial),
+          () => {},
+        ],
       },
       "next/link": { default: "a" },
       "next/navigation": {
@@ -58,7 +62,7 @@ function ui(api, role = "LECTURER", states = []) {
       "@/lib/assessments": { ...lib(), assessmentRequest: api },
     },
     {},
-    "\nexport { EventEditor, Rooms, EditForm }; ",
+    "\nexport { EventEditor, Rooms, EditForm, PolicyEditor, SemesterRules, SubmissionFields }; ",
   );
   return { ...loaded, navigation };
 }
@@ -67,6 +71,41 @@ function form(values) {
   for (const [k, v] of Object.entries(values)) result.set(k, v);
   return result;
 }
+test("scheduled, writing and arrival times stay separate in editor payload", () => {
+  const payload = lib().eventInput(
+    form({
+      start_time: "10:00",
+      end_time: "12:00",
+      writing_start_time: "10:15",
+      writing_end_time: "11:45",
+      latest_arrival_time: "10:05",
+    }),
+    "ENDTERM",
+  );
+  assert.equal(payload.start_time, "10:00");
+  assert.equal(payload.writing_start_time, "10:15");
+  assert.equal(payload.writing_end_time, "11:45");
+  assert.equal(payload.latest_arrival_time, "10:05");
+  assert.equal(lib().eventInput(form({}), "ENDTERM").writing_start_time, null);
+  const component = ui(() => {});
+  const tree = component.EventEditor({
+    type: "ENDTERM",
+    value: { id: 1, rooms: [] },
+    base: "/1",
+    update: () => {},
+  });
+  const labels = nodes(tree)
+    .filter((n) => n.type === "label")
+    .map((n) => n.props.children[0]);
+  for (const text of [
+    "Scheduled start time",
+    "Scheduled end time",
+    "Actual writing start time",
+    "Actual writing end time",
+    "Latest arrival time",
+  ])
+    assert.ok(labels.includes(text));
+});
 for (const type of Object.keys(lib().eventLabels)) {
   test(`room section applicability: ${type}`, () => {
     const component = ui(() => {});
@@ -291,4 +330,113 @@ test("proxy forwards all CRUD methods with cookies, CSRF and no cache", async ()
     assert.equal(result.status, 200);
     assert.equal(result.headers.get("cache-control"), "no-store");
   }
+});
+
+test("policy payload preserves optional values and fractional scores", () => {
+  const payload = lib().policyInput(
+    form({
+      topics: " Graphs & sets ",
+      maximum_score: "20.5",
+      passing_score: "8",
+      duration_minutes: "90",
+      assessment_count: "10",
+    }),
+  );
+  assert.equal(payload.topics, "Graphs & sets");
+  assert.equal(payload.maximum_score, "20.5");
+  assert.equal(payload.duration_minutes, 90);
+  assert.equal(payload.assessment_count, 10);
+  assert.equal(payload.permitted_equipment, null);
+});
+test("grade thresholds are explicit, never inferred", () => {
+  assert.throws(() => lib().rulesInput(form({ grade_1: "0" })), /five/);
+  const data = lib().rulesInput(
+    form({
+      grade_1: "0",
+      grade_2: "48",
+      grade_3: "66",
+      grade_4: "84",
+      grade_5: "102",
+      plus_points_maximum: "10.5",
+    }),
+  );
+  assert.equal(data.grade_boundaries.length, 5);
+  assert.equal(data.plus_points_maximum, "10.5");
+  assert.equal(lib().rulesInput(form({})).grade_boundaries.length, 0);
+});
+test("group deadlines serialize independently from scheduled time", () => {
+  const data = lib().eventInput(
+    form({
+      start_time: "10:00",
+      submission_deadline_time: "09:30",
+      deadline_group_4: " G1 ",
+      deadline_date_4: "2027-05-02",
+      deadline_venue_4: " R1 ",
+      deadline_group_8: "G2",
+    }),
+    "COURSEWORK_HAND_IN",
+  );
+  assert.equal(data.start_time, "10:00");
+  assert.equal(data.submission_deadline_time, "09:30");
+  assert.equal(data.group_deadlines.length, 2);
+  assert.equal(data.group_deadlines[0].group_identifier, "G1");
+  assert.equal(data.group_deadlines[0].venue, "R1");
+  assert.equal(data.group_deadlines[1].deadline_date, null);
+});
+test("policy editor saves through existing authenticated assessment client", async () => {
+  const calls = [];
+  const component = ui(async (...args) => {
+    calls.push(args);
+    return { code: "ENDTERM" };
+  });
+  let saved;
+  const tree = component.PolicyEditor({
+    code: "ENDTERM",
+    base: "/7",
+    update: (value) => {
+      saved = value;
+    },
+  });
+  await tree.props.save(form({ maximum_score: "40", topics: "Graphs" }));
+  assert.equal(calls[0][0], "/7/policies/ENDTERM");
+  assert.equal(calls[0][1], "PUT");
+  assert.equal(saved.code, "ENDTERM");
+  const fields = nodes(tree).filter(
+    (n) => n.type === "input" || n.type === "textarea",
+  );
+  assert.ok(fields.some((n) => n.props.name === "permitted_equipment"));
+});
+test("submission editor shows saved group overrides and plain-text seating field", () => {
+  const component = ui(async () => {});
+  const tree = component.SubmissionFields({
+    value: {
+      group_deadlines: [
+        {
+          group_identifier: "Tuesday",
+          deadline_date: "2027-05-01",
+          venue: "Room",
+        },
+      ],
+    },
+  });
+  const inputs = nodes(tree).filter((n) => n.type === "input");
+  assert.ok(
+    inputs.some(
+      (n) =>
+        n.props.name === "deadline_group_0" &&
+        n.props.defaultValue === "Tuesday",
+    ),
+  );
+  assert.ok(
+    inputs.some(
+      (n) =>
+        n.props.name === "deadline_date_0" &&
+        n.props.defaultValue === "2027-05-01",
+    ),
+  );
+  assert.ok(
+    nodes(tree).some(
+      (n) => n.type === "button" && n.props["data-assessment-change"],
+    ),
+  );
 });

@@ -9,12 +9,20 @@ from app.auth_models import User
 from app.database import get_session
 from app.assessment_models import AssessmentConfiguration, AssessmentEvent, AssessmentRoom, AssessmentRoomGroup
 from app.assessment_schemas import ConfigurationCreate, ConfigurationPatch, ConfigurationRead, ConfigurationDetail, EventWrite, EventRead, RoomWrite, RoomRead
+from fastapi.responses import PlainTextResponse
+from app.document_generation.service import DocumentType, render_document
+from app.assessment_models import AssessmentPolicy, AssessmentGradeBoundary, AssessmentGroupDeadline
+from app.assessment_policy_schemas import PolicyCode, PolicyWrite, PolicyRead, RulesWrite, RulesRead
 
 router = APIRouter(prefix='/assessment-configurations', tags=['Semester assessment configuration'])
 ROOM_EVENT_TYPES = frozenset({'MIDTERM', 'ENDTERM', 'SHORT_QUIZ_RETAKE', 'TEST_RETAKE'})
 DB = Annotated[Session, Depends(get_session)]
 Manager = Annotated[User, Depends(manager_user)]
 Id = Annotated[int, Path(gt=0)]
+
+@router.get('/{configuration_id}/documents/{document_type}/latex', response_class=PlainTextResponse)
+def preview_latex(configuration_id: Id, document_type: DocumentType, session: DB, actor: Manager):
+    return PlainTextResponse(render_document(session, configuration_id, document_type, actor))
 
 def configuration(session, configuration_id, actor=None):
     if actor is not None:
@@ -53,6 +61,11 @@ def commit(session):
         session.rollback()
         raise HTTPException(409, 'Conflicting semester, event, room or practice group assignment') from None
 
+def check_grade_maximum(parent):
+    maximum = parent.maximum_total_score
+    if maximum is not None and any(row.minimum_score > maximum for row in parent.grade_boundaries):
+        raise HTTPException(422, 'A grade threshold exceeds the configured maximum total score')
+
 @router.get('', response_model=list[ConfigurationRead])
 def list_configurations(session: DB, actor: Manager, offset: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=100)] = 20):
     return list(session.scalars(select(AssessmentConfiguration).order_by(AssessmentConfiguration.academic_year_start.desc(), AssessmentConfiguration.term).offset(offset).limit(limit)))
@@ -85,10 +98,45 @@ def delete_configuration(configuration_id: Id, session: DB, actor: Manager):
     session.delete(configuration(session, configuration_id, actor))
     commit(session)
 
+@router.get('/{configuration_id}/rules', response_model=RulesRead)
+def get_rules(configuration_id: Id, session: DB, actor: Manager):
+    return configuration(session, configuration_id)
+
+@router.put('/{configuration_id}/rules', response_model=RulesRead)
+def update_rules(configuration_id: Id, payload: RulesWrite, session: DB, actor: Manager):
+    parent = configuration(session, configuration_id, actor)
+    for key, value in payload.model_dump(exclude={'grade_boundaries'}).items():
+        setattr(parent, key, value)
+    parent.grade_boundaries.clear()
+    session.flush()
+    parent.grade_boundaries = [AssessmentGradeBoundary(**row.model_dump()) for row in payload.grade_boundaries]
+    check_grade_maximum(parent)
+    touch(parent, actor)
+    commit(session)
+    return parent
+
+@router.put('/{configuration_id}/policies/{code}', response_model=PolicyRead)
+def update_policy(configuration_id: Id, code: PolicyCode, payload: PolicyWrite, session: DB, actor: Manager):
+    parent = configuration(session, configuration_id, actor)
+    result = session.get(AssessmentPolicy, (parent.id, code))
+    if result is None:
+        result = AssessmentPolicy(configuration_id=parent.id, code=code)
+        session.add(result)
+    for key, value in payload.model_dump().items():
+        setattr(result, key, value)
+    session.flush()
+    session.expire(parent, ['policies'])
+    check_grade_maximum(parent)
+    touch(parent, actor)
+    commit(session)
+    return result
+
 @router.post('/{configuration_id}/events', response_model=EventRead, status_code=201)
 def create_event(configuration_id: Id, payload: EventWrite, session: DB, actor: Manager):
     parent = configuration(session, configuration_id, actor)
-    result = AssessmentEvent(configuration_id=parent.id, **payload.model_dump(), last_modified_by_id=actor.id)
+    fields = payload.model_dump(exclude={'group_deadlines'})
+    result = AssessmentEvent(configuration_id=parent.id, **fields, last_modified_by_id=actor.id)
+    result.group_deadlines = [AssessmentGroupDeadline(**row.model_dump()) for row in payload.group_deadlines]
     session.add(result)
     touch(parent, actor)
     commit(session)
@@ -100,8 +148,17 @@ def update_event(configuration_id: Id, event_id: Id, payload: EventWrite, sessio
     result = event(session, parent.id, event_id)
     if payload.event_type not in ROOM_EVENT_TYPES and result.rooms:
         raise HTTPException(409, 'Remove room assignments before changing to an event type without room assignments')
-    for key, value in payload.model_dump().items():
+    if payload.event_type not in {'COURSEWORK_HAND_IN', 'COURSEWORK_RETAKE_HAND_IN'} and (result.group_deadlines or any(getattr(result, k) is not None for k in ('submission_deadline_date','submission_deadline_time','submission_venue','submission_instructions'))):
+        raise HTTPException(409, 'Clear submission details before changing this event type')
+    extended = {'seating_plan','submission_deadline_date','submission_deadline_time','submission_venue','submission_instructions'}
+    for key, value in payload.model_dump(exclude={'group_deadlines'}).items():
+        if key in extended and key not in payload.model_fields_set:
+            continue
         setattr(result, key, value)
+    if 'group_deadlines' in payload.model_fields_set:
+        result.group_deadlines.clear()
+        session.flush()
+        result.group_deadlines = [AssessmentGroupDeadline(**row.model_dump()) for row in payload.group_deadlines]
     touch(parent, actor)
     touch(result, actor)
     commit(session)
