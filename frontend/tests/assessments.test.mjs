@@ -40,6 +40,7 @@ function nodes(node) {
 function ui(api, role = "LECTURER", states = []) {
   let cursor = 0;
   const navigation = [];
+  const stateChanges = [];
   const loaded = load(
     "src/components/assessment-editor.tsx",
     {
@@ -47,11 +48,10 @@ function ui(api, role = "LECTURER", states = []) {
       react: {
         useEffect: () => {},
         useRef: (value) => ({ current: value }),
-        useState: (initial) => [
-          states[cursor++] ??
-            (typeof initial === "function" ? initial() : initial),
-          () => {},
-        ],
+        useState: (initial) => {
+          let value = states[cursor++] ?? (typeof initial === "function" ? initial() : initial);
+          return [value, change => {value = typeof change === "function" ? change(value) : change; stateChanges.push(value);}];
+        },
       },
       "next/link": { default: "a" },
       "next/navigation": {
@@ -66,7 +66,7 @@ function ui(api, role = "LECTURER", states = []) {
     {},
     "\nexport { EventEditor, Rooms, EditForm, PolicyEditor, SemesterRules, SubmissionFields }; ",
   );
-  return { ...loaded, navigation };
+  return { ...loaded, navigation, stateChanges };
 }
 function form(values) {
   const result = new FormData();
@@ -137,7 +137,7 @@ for (const type of Object.keys(lib().eventLabels)) {
         nodes(roomTree).some(
           (n) =>
             typeof n.props?.children === "string" &&
-            n.props.children.startsWith("Optional. Leave empty"),
+            n.props.children === "+ Add room",
         ),
       );
     }
@@ -216,7 +216,7 @@ test("event create/update/delete use actual API and human labels", async () => {
     });
     assert.ok(
       nodes(tree).some(
-        (n) => n.type === "h2" && n.props.children === "Midterm test",
+        (n) => n.type === "h2" && [n.props.children].flat().join("").includes("Midterm test — Schedule & Logistics"),
       ),
     );
     const edit = nodes(tree).find((n) => n.type === component.EditForm);
@@ -233,38 +233,39 @@ test("event create/update/delete use actual API and human labels", async () => {
   );
   assert.equal(calls[0][2].start_time, null);
 });
-test("room create/update/delete and structured groups", async () => {
-  const calls = [];
-  const component = ui(async (...args) => {
-    calls.push(args);
-    return { id: 3 };
+test("room rows validate, save, swap, remove and reload multiple assignments", async () => {
+  let records=[{id:1,room:"A",groups:[{identifier:"1"}]},{id:2,room:"B",groups:[{identifier:"2"}]}], serial=2;
+  const api=lib(async (url,options) => {
+    if(options.method === "DELETE") { records=records.filter(r=>r.id!==Number(url.split("/").at(-1))); return new Response(null,{status:204}); }
+    const payload=JSON.parse(options.body), room={id:++serial,room:payload.room,groups:payload.groups.map(identifier=>({identifier}))}; records.push(room);return Response.json(room);
   });
-  const tree = component.Rooms({
-    event: { rooms: [{ id: 3, room: "A", groups: [{ identifier: "lab" }] }] },
-    path: "/7/events/9/rooms",
-    update: () => {},
-  });
-  const forms = nodes(tree).filter((n) => n.type === component.EditForm);
-  await forms[0].props.save(form({ room: "B", groups: "1, lab-A\n42" }));
-  await forms[0].props.remove();
-  await forms[1].props.save(form({ room: "C", groups: "X" }));
-  assert.deepEqual(
-    calls.map((c) => c[1]),
-    ["PUT", "DELETE", "POST"],
-  );
-  assert.equal(
-    JSON.stringify(calls[0][2].groups),
-    JSON.stringify(["1", "lab-A", "42"]),
-  );
-  assert.throws(
-    () => lib().roomInput(form({ room: "R", groups: "1, 1" })),
-    /only once/,
-  );
-  assert.throws(
-    () => lib().roomInput(form({ room: "R", groups: "" })),
-    /at least one/,
-  );
+  const saved=new Map(records.map(r=>[String(r.id),r]));
+  const data=form({room_1:"B",groups_1:"2",room_2:"A",groups_2:"1",room_new:"C",groups_new:"3,4"});
+  ["1","2","new","empty"].forEach(key=>data.append("room_key",key));
+  const rows=api.roomRowsInput(data);assert.equal(rows.length,3);
+  await api.saveRoomRows("/1/events/2/rooms",rows,saved,()=>{});
+  assert.equal(records.length,3);assert.equal(records[2].groups.length,2);
+  await api.saveRoomRows("/1/events/2/rooms",rows.slice(0,2),saved,()=>{});assert.equal(records.length,2);
+  const component=ui();const tree=component.Rooms({event:{rooms:records,event_type:"MIDTERM"},path:"/1/events/2/rooms",update:()=>{}});
+  assert.equal(nodes(tree).filter(n=>n.type==='input' && n.props.name.startsWith('room_') && n.props.type!=='hidden').length,2);
+  assert.equal(nodes(tree).filter(n=>n.type===component.EditForm).length,1);
+  assert.ok(nodes(tree).some(n=>n.type==='button' && n.props.children==='+ Add room'));
+  data.set('groups_new','1');assert.throws(()=>api.roomRowsInput(data),/Room row 3.*multiple rooms/);
+  data.set('groups_new','');assert.throws(()=>api.roomRowsInput(data),/Room row 3.*at least one/);
+  // Validation scope is one event, not a global practice-group registry.
+  assert.equal(api.roomRowsInput(formWithRoom('A','1')).length,1);
 });
+function formWithRoom(room,groups) {const result=form({room_x:room,groups_x:groups});result.append('room_key','x');return result;}
+
+test("partial room save retains successful operations for safe retry",async()=>{
+  let fail=true, calls=0;
+  const api=lib(async()=>{calls++;if(fail)throw Error('offline');return Response.json({id:9,room:'A',groups:[{identifier:'1'}]});});
+  const saved=new Map(), rows=api.roomRowsInput(formWithRoom('A','1'));
+  await assert.rejects(api.saveRoomRows('/rooms',rows,saved,()=>{}),/not fully saved/);
+  fail=false;await api.saveRoomRows('/rooms',rows,saved,()=>{});await api.saveRoomRows('/rooms',rows,saved,()=>{});
+  assert.equal(calls,2);assert.equal(saved.size,1);
+});
+
 test("semester and group conflicts plus validation remain useful", async () => {
   const api = lib(async () => Response.json({}, { status: 409 }));
   await assert.rejects(
@@ -531,4 +532,59 @@ test("document workspaces retain canonical editors and show only relevant sectio
       for (const name of ["maximum_score","passing_score"]) assert.ok(fields.some(n=>n.type==='input' && n.props.name===name));
     }
   }
+});
+
+test("Add room and Remove edit draft rows without requests",()=>{
+  const component=ui(()=>{throw Error('must not save');});
+  const tree=component.Rooms({event:{rooms:[{id:1,room:'A',groups:[]}],event_type:'MIDTERM'},path:'/rooms',update:()=>{}});
+  const buttons=nodes(tree).filter(n=>n.type==='button');
+  const add=buttons.find(n=>n.props.children==='+ Add room');
+  add.props.onClick();add.props.onClick();assert.equal(component.stateChanges.at(-1).length,3);
+  buttons.find(n=>n.props.children==='Remove').props.onClick();assert.equal(component.stateChanges.at(-1).length,2);
+  assert.equal(new Set(component.stateChanges.at(-1).map(row=>row.key)).size,2);
+});
+
+test("draft room identity keeps blank rows, edits and remaining values independent", () => {
+  const event={rooms:[{id:1,room:'LE 12',groups:[{identifier:'2'}]}],event_type:'MIDTERM'};
+  const props={event,path:'/rooms',update:()=>{}};
+  const first=ui();const tree=first.Rooms(props);
+  const inputs=nodes(tree).filter(n=>n.type==='input');
+  assert.equal(inputs.find(n=>n.props.name==='room_saved-1').props.value,'LE 12');
+  const add=nodes(tree).find(n=>n.type==='button' && n.props.children==='+ Add room');
+  add.props.onClick();add.props.onClick();
+  let rows=first.stateChanges.at(-1);
+  assert.equal(new Set(rows.map(r=>r.key)).size,3);
+  for(const row of rows.slice(1)) {assert.equal(row.room,'');assert.equal(row.groups,'');assert.match(row.key,/^draft-/);}
+  const next=ui(undefined,'LECTURER',[rows]);const view=next.Rooms(props);
+  const fields=nodes(view).filter(n=>n.type==='input');
+  const room=fields.find(n=>n.props.name===`room_${rows[1].key}`);
+  assert.equal(room.props.placeholder,undefined);assert.equal(room.props.value,'');
+  assert.equal(fields.find(n=>n.props.name===`groups_${rows[1].key}`).props.placeholder,undefined);
+  room.props.onChange({target:{value:'LE 99'}});
+  rows=next.stateChanges.at(-1);assert.equal(rows[0].room,'LE 12');assert.equal(rows[1].room,'LE 99');assert.equal(rows[2].room,'');
+  nodes(view).find(n=>n.type==='button' && n.props['aria-label']==='Remove room row 1').props.onClick();
+  rows=next.stateChanges.at(-1);assert.equal(rows.length,2);assert.equal(rows[0].room,'LE 99');assert.equal(rows[1].room,'');
+  const reordered=ui(undefined,'LECTURER',[[...rows].reverse()]).Rooms(props);
+  const reorderedRows=nodes(reordered).filter(n=>n.props?.className==='room-assignment-row');
+  assert.equal(reorderedRows[0].key,rows[1].key);assert.equal(reorderedRows[1].key,rows[0].key);
+  const blank=formWithRoom('','');assert.equal(lib().roomRowsInput(blank).length,0);
+  assert.throws(()=>lib().roomRowsInput(formWithRoom('LE 99','')),/Room row 1/);
+  assert.ok(!JSON.stringify(lib().roomRowsInput(blank)).includes('e.g.'));
+});
+
+test("one keystroke updates only its controlled row and retains input identity",()=>{
+  const props={event:{event_type:'MIDTERM',rooms:[{id:7,room:'',groups:[]},{id:8,room:'B',groups:[{identifier:'2'}]}]},path:'/rooms',update:()=>{}};
+  const component=ui();const tree=component.Rooms(props);
+  const input=nodes(tree).find(n=>n.props?.name==='room_saved-7');
+  input.props.onChange({target:{value:'L'}});
+  const rows=component.stateChanges.at(-1);assert.equal(rows[0].room,'L');assert.equal(rows[1].room,'B');
+  const next=ui(undefined,'LECTURER',[rows]).Rooms(props);
+  const before=nodes(tree).filter(n=>n.props?.className==='room-assignment-row');
+  const after=nodes(next).filter(n=>n.props?.className==='room-assignment-row');
+  assert.deepEqual(after.map(n=>n.key),before.map(n=>n.key));
+  const updated=nodes(next).find(n=>n.props?.name==='room_saved-7');
+  assert.equal(updated.type,input.type);assert.equal(updated.props.value,'L');
+  assert.equal(updated.props.autoFocus,undefined);
+  const groups=nodes(tree).find(n=>n.props?.name==='groups_saved-7');groups.props.onChange({target:{value:'1'}});
+  assert.equal(component.stateChanges.at(-1)[0].groups,'1');
 });

@@ -211,3 +211,59 @@ test("responsive preview has independent scrolling and a stacked narrow layout",
   assert.match(css, /@media \(max-width: 1100px\)/);
   assert.match(css, /\.document-preview-scroll\s*\{[^}]*overflow: auto/s);
 });
+
+test("modern workspace has accessible scrolling navigation and restrained preview surfaces", () => {
+  const { DocumentWorkspace } = component();
+  const tree = DocumentWorkspace({id: "1", children: () => null});
+  const nav = nodes(tree).find(n => n.type === "nav");
+  assert.equal(nav.props["aria-label"], "Assessment documents");
+  const buttons = nodes(nav).filter(n => n.type === "button");
+  assert.equal(buttons.length, 7);
+  assert.equal(buttons.filter(n => n.props["aria-pressed"]).length, 1);
+  assert.ok(buttons.every(n => n.props.type === "button"));
+  const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.document-navigation\s*\{[^}]*flex-wrap: nowrap;[^}]*overflow-x: auto/s);
+  assert.match(css, /\.document-navigation button:focus-visible/);
+  assert.match(css, /\.draft-paper\s*\{[^}]*background: #fff;[^}]*font: inherit/s);
+  assert.doesNotMatch(css.match(/\.draft-paper\s*\{[^}]*\}/s)[0], /box-shadow/);
+  assert.match(css, /\.document-editor-pane \.assessment-form > fieldset > \.staff-actions\s*\{[^}]*position: sticky/s);
+});
+
+test("multiple unsaved room rows feed preview and removed rows disappear", () => {
+  const forms=samples();
+  const batch=form('rooms:ENDTERM',{room_a:'LE 23',groups_a:'2,3',room_b:'Hall',groups_b:'5'});
+  batch.values.append('room_key','a');batch.values.append('room_key','b');forms.push(batch);
+  assert.equal(preview.draftFromForms(forms).events[0].rooms.length,2);
+  batch.values.set('room_a','Changed');
+  assert.equal(preview.draftFromForms(forms).events[0].rooms[0].room,'Changed');
+  batch.values.delete('room_key');batch.values.append('room_key','a');
+  assert.equal(preview.draftFromForms(forms).events[0].rooms.length,1);
+});
+test("redundant explanatory text is absent while Draft Preview remains",()=>{
+  const source=['assessment-editor.tsx','document-preview.tsx'].map(file=>readFileSync(new URL('../src/components/'+file,import.meta.url),'utf8')).join(' ').replace(/\s+/g,' ');
+  for(const text of ['Uses the LaTeX document content.', 'Scheduled times are the official interval;', 'Separate identifiers with commas', 'Maximum and passing scores refer', 'Choose a document']) assert.ok(!source.includes(text),text);
+  assert.ok(source.includes('Draft Preview'));
+});
+
+test("native input waits for React controlled commit before scheduling preview; cleanup cancels pending refresh", () => {
+  const timers=new Map(), listeners=new Map(), changes=[];let next=0, effect, cleanup, scheduled=0;
+  const element={querySelector:()=>null,addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
+  const loaded=load('components/document-preview.tsx',{
+    'react/jsx-runtime':jsx,
+    react:{useEffect:fn=>{effect=fn},useRef:()=>({current:element}),useState:initial=>[initial,value=>changes.push(value)]},
+    '@/lib/assessments':assessments,
+    '@/lib/document-preview':{...preview,previewScheduler:()=>({schedule:()=>scheduled++,dispose:()=>{}})},
+  },{
+    setTimeout:fn=>{timers.set(++next,fn);return next},clearTimeout:id=>timers.delete(id),
+    MutationObserver:class {observe(){} disconnect(){}},
+  });
+  loaded.DocumentWorkspace({id:'1',children:()=>null});cleanup=effect();
+  timers.clear();
+  // A native input listener runs before the ancestor React change handler.
+  listeners.get('input')();listeners.get('change')();
+  assert.equal(changes.length,0);assert.equal(scheduled,0);assert.equal(timers.size,1);
+  // React can now commit one character without an intervening preview render.
+  [...timers.values()][0]();timers.clear();
+  assert.equal(scheduled,1);
+  listeners.get('input')();cleanup();assert.equal(timers.size,0);assert.equal(listeners.size,0);
+});

@@ -218,3 +218,69 @@ export function eventInput(form: FormData, event_type: EventType) {
     latest_arrival_time: value("latest_arrival_time"),
   };
 }
+
+export function roomRowsInput(form: FormData) {
+  const groups = new Set<string>();
+  const names = new Set<string>();
+  return form.getAll("room_key").flatMap((raw, index) => {
+    const key = String(raw),
+      row = new FormData();
+    const room = String(form.get(`room_${key}`) ?? "").trim();
+    const identifiers = String(form.get(`groups_${key}`) ?? "").trim();
+    if (!room && !identifiers) return [];
+    row.set("room", room);
+    row.set("groups", identifiers);
+    try {
+      const value = roomInput(row);
+      if (names.has(value.room))
+        throw new Error("This room appears more than once.");
+      names.add(value.room);
+      for (const group of value.groups) {
+        if (groups.has(group))
+          throw new Error(
+            `Practice group ${group} is assigned to multiple rooms.`,
+          );
+        groups.add(group);
+      }
+      return [{ key, ...value }];
+    } catch (error) {
+      throw new Error(`Room row ${index + 1}: ${(error as Error).message}`);
+    }
+  });
+}
+
+// Existing API is per-room. Record each successful operation so a retry is safe.
+export async function saveRoomRows(
+  path: string,
+  rows: ReturnType<typeof roomRowsInput>,
+  saved: Map<string, Room>,
+  changed: (rooms: Room[]) => void,
+) {
+  const unchanged = (key: string, room: Room) =>
+    rows.some(
+      (row) =>
+        row.key === key &&
+        row.room === room.room &&
+        JSON.stringify(row.groups) ===
+          JSON.stringify(room.groups.map((g) => g.identifier)),
+    );
+  try {
+    // Release changed assignments first, allowing groups/room names to swap.
+    for (const [key, room] of saved)
+      if (!unchanged(key, room)) {
+        await assessmentRequest(`${path}/${room.id}`, "DELETE");
+        saved.delete(key);
+        changed([...saved.values()]);
+      }
+    for (const { key, ...payload } of rows)
+      if (!saved.has(key)) {
+        const room = await assessmentRequest<Room>(path, "POST", payload);
+        saved.set(key, room);
+        changed([...saved.values()]);
+      }
+  } catch (error) {
+    throw new Error(
+      `Room assignments were not fully saved. Some changes may already be saved; your rows are retained. Retry Save. ${(error as Error).message}`,
+    );
+  }
+}

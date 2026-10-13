@@ -117,9 +117,16 @@ export function DocumentWorkspace({
         if (state.preview) setPreview(state.preview);
       },
     );
+    // Native events reach this element before React's delegated onChange.
+    // Wait until React commits the controlled value before updating preview state.
+    // Otherwise a parent render can restore the old value during the same keystroke.
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
-      setDirty(Boolean(element.querySelector('form[data-dirty="true"]')));
-      scheduler.schedule();
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        setDirty(Boolean(element.querySelector('form[data-dirty="true"]')));
+        scheduler.schedule();
+      }, 0);
     };
     element.addEventListener("input", refresh);
     element.addEventListener("change", refresh);
@@ -133,6 +140,7 @@ export function DocumentWorkspace({
     });
     refresh();
     return () => {
+      clearTimeout(refreshTimer);
       scheduler.dispose();
       observer.disconnect();
       element.removeEventListener("input", refresh);
@@ -171,19 +179,17 @@ export function DocumentWorkspace({
           <header className="document-preview-toolbar">
             <h2>Draft Preview</h2>
             <h3>{documentLabels[kind]}</h3>
-            <p>
-              Uses the LaTeX document content. Fonts, pagination and spacing may
-              differ from the final PDF.
-            </p>
-            <p className="draft-save-state">
+            <p className="draft-save-state" role="status">
               {dirty ? "Unsaved changes — preview only" : "Saved configuration"}
             </p>
             <div role="status" aria-live="polite">
               {loading
-                ? "Updating preview..."
+                ? preview
+                  ? "Updating — showing previous draft"
+                  : "Updating preview..."
                 : !error
                   ? "Preview up to date"
-                  : "Preview not up to date"}
+                  : "Error — preview not up to date"}
             </div>
             {error && (
               <p role="alert">
@@ -204,12 +210,6 @@ export function DocumentWorkspace({
             aria-label="Scrollable draft document"
             aria-busy={loading}
           >
-            {(loading || error) && preview && (
-              <p className="draft-stale">
-                Showing the previous preview while the current values are
-                checked.
-              </p>
-            )}
             <article className="draft-paper">
               <PreviewNodes nodes={preview?.blocks ?? []} />
               {!preview && (

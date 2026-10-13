@@ -2,6 +2,7 @@ import {
   eventInput,
   policyInput,
   roomInput,
+  roomRowsInput,
   rulesInput,
   type EventType,
 } from "./assessments";
@@ -59,17 +60,23 @@ export function draftFromForms(forms: FormSnapshot[]) {
     .filter((f) => f.scope.startsWith("event:"))
     .map((f) => {
       const type = f.scope.slice(6) as EventType;
-      const rooms = forms
-        .filter((r) => r.scope.startsWith(`room:${type}:`))
-        .flatMap((r) => {
-          if (
-            r.scope.endsWith(":new") &&
-            !String(r.values.get("room") ?? "").trim() &&
-            !String(r.values.get("groups") ?? "").trim()
-          )
-            return [];
-          return [roomInput(r.values)];
-        });
+      const batch = forms.find((r) => r.scope === `rooms:${type}`);
+      const rooms = batch
+        ? roomRowsInput(batch.values).map(({ room, groups }) => ({
+            room,
+            groups,
+          }))
+        : forms
+            .filter((r) => r.scope.startsWith(`room:${type}:`))
+            .flatMap((r) => {
+              if (
+                r.scope.endsWith(":new") &&
+                !String(r.values.get("room") ?? "").trim() &&
+                !String(r.values.get("groups") ?? "").trim()
+              )
+                return [];
+              return [roomInput(r.values)];
+            });
       return { ...eventInput(f.values, type), rooms };
     });
   const rules = forms.find((f) => f.scope === "rules");

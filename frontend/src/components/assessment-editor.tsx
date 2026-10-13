@@ -20,7 +20,8 @@ import {
   assessmentRequest,
   canManageAssessments,
   eventInput,
-  roomInput,
+  roomRowsInput,
+  saveRoomRows,
   eventLabels,
   roomEventTypes,
   type Semester,
@@ -152,6 +153,9 @@ function EditForm({
       <fieldset disabled={busy}>
         {children}
         <div className="staff-actions">
+          {dirty && (
+            <span className="field-hint">Unsaved changes in this section</span>
+          )}
           <button className="button button-primary">
             {busy ? "Saving…" : `Save ${label}`}
           </button>
@@ -166,7 +170,6 @@ function EditForm({
           )}
         </div>
       </fieldset>
-      {dirty && <p className="field-hint">Unsaved changes</p>}
       {error && (
         <p role="alert" className="error-message">
           {error}
@@ -380,12 +383,7 @@ function EventEditor({
   const path = `${base}/events`;
   return (
     <section className="panel quiz-panel">
-      <h2>{eventLabels[type]}</h2>
-      <p>
-        {value
-          ? "Configured — edit the fields below."
-          : "Not configured yet — enter any known details and save."}
-      </p>
+      <h2>{eventLabels[type]} — Schedule &amp; Logistics</h2>
       <EditForm
         key={value?.id ?? "new"}
         previewScope={`event:${type}`}
@@ -427,6 +425,11 @@ function EventEditor({
               {label}
               <input
                 name={name}
+                title={
+                  kind === "time"
+                    ? "Scheduled: official interval. Writing: actual test time."
+                    : undefined
+                }
                 type={kind}
                 step={kind === "time" ? "any" : undefined}
                 maxLength={kind === "text" ? 200 : undefined}
@@ -435,32 +438,30 @@ function EventEditor({
             </label>
           ))}
         </div>
-        <label>
-          Seating plan (optional; describe rows, columns or arrangements by
-          retake type)
-          <textarea
-            name="seating_plan"
-            maxLength={20000}
-            defaultValue={value?.seating_plan ?? ""}
-          />
-        </label>
+        <details className="document-advanced">
+          <summary>Instructions &amp; Configuration (optional)</summary>
+          <label>
+            Seating plan (optional; describe rows, columns or arrangements by
+            retake type)
+            <textarea
+              name="seating_plan"
+              maxLength={20000}
+              defaultValue={value?.seating_plan ?? ""}
+            />
+          </label>
+          <label>
+            Notes (optional)
+            <textarea
+              name="notes"
+              maxLength={20000}
+              defaultValue={value?.notes ?? ""}
+            />
+          </label>
+        </details>
         {(type === "COURSEWORK_HAND_IN" ||
           type === "COURSEWORK_RETAKE_HAND_IN") && (
           <SubmissionFields value={value} />
         )}
-        <label>
-          Notes (optional)
-          <textarea
-            name="notes"
-            maxLength={20000}
-            defaultValue={value?.notes ?? ""}
-          />
-        </label>
-        <p className="field-hint">
-          Scheduled times are the official interval; actual writing times
-          describe the test itself. Arrival is independent. All are optional and
-          use the local campus clock.
-        </p>
       </EditForm>
       {roomEventTypes.includes(type) &&
         (value ? (
@@ -493,85 +494,93 @@ function Rooms({
   path: string;
   update: (change: (rooms: Room[]) => Room[]) => void;
 }) {
-  const [version, setVersion] = useState(0);
+  const [rows, setRows] = useState<
+    { key: string; room: string; groups: string }[]
+  >(() =>
+    event.rooms.map((room) => ({
+      key: `saved-${room.id}`,
+      room: room.room,
+      groups: room.groups.map((g) => g.identifier).join(", "),
+    })),
+  );
+  const next = useRef(0);
+  const saved = useRef(
+    new Map(event.rooms.map((room) => [`saved-${room.id}`, room])),
+  );
   return (
     <section>
-      <h3>Practice group room assignments</h3>
-      <p>
-        Optional. Leave empty if room assignments have not been announced yet.
-      </p>
-      {!event.rooms.length && <p>No rooms assigned yet.</p>}
-      {event.rooms.map((room) => (
-        <div className="panel" key={room.id}>
-          <h4>{room.room}</h4>
-          <EditForm
-            previewScope={`room:${event.event_type}:${room.id}`}
-            label="room assignment"
-            save={async (form) => {
-              const saved = await assessmentRequest<Room>(
-                `${path}/${room.id}`,
-                "PUT",
-                roomInput(form),
-              );
-              update((rooms) =>
-                rooms.map((r) => (r.id === saved.id ? saved : r)),
-              );
-            }}
-            remove={async () => {
-              await assessmentRequest(`${path}/${room.id}`, "DELETE");
-              update((rooms) => rooms.filter((r) => r.id !== room.id));
-            }}
-          >
-            <RoomFields value={room} />
-          </EditForm>
-        </div>
-      ))}
-      <h4>Add room assignment</h4>
+      <h3>Room assignments</h3>
       <EditForm
-        key={version}
-        previewScope={`room:${event.event_type}:new`}
-        label="room assignment"
-        fresh
+        label="room assignments"
+        previewScope={`rooms:${event.event_type}`}
         save={async (form) => {
-          const saved = await assessmentRequest<Room>(
-            path,
-            "POST",
-            roomInput(form),
+          const values = roomRowsInput(form);
+          await saveRoomRows(path, values, saved.current, (rooms) =>
+            update(() => rooms),
           );
-          update((rooms) => [...rooms, saved]);
-          setVersion((n) => n + 1);
         }}
       >
-        <RoomFields />
+        {rows.map((row, index) => (
+          <div className="room-assignment-row" key={row.key}>
+            <input type="hidden" name="room_key" value={row.key} />
+            <label>
+              Room
+              <input
+                name={`room_${row.key}`}
+                maxLength={200}
+                value={row.room}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setRows((current) =>
+                    current.map((r) =>
+                      r.key === row.key ? { ...r, room: value } : r,
+                    ),
+                  );
+                }}
+              />
+            </label>
+            <label>
+              Practice groups
+              <input
+                name={`groups_${row.key}`}
+                value={row.groups}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setRows((current) =>
+                    current.map((r) =>
+                      r.key === row.key ? { ...r, groups: value } : r,
+                    ),
+                  );
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="button button-secondary"
+              data-assessment-change
+              aria-label={`Remove room row ${index + 1}`}
+              onClick={() =>
+                setRows((current) => current.filter((r) => r.key !== row.key))
+              }
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="button button-secondary"
+          data-assessment-change
+          onClick={() => {
+            // Allocate once per click, outside the replayable React state updater.
+            const key = `draft-${next.current++}`;
+            setRows((current) => [...current, { key, room: "", groups: "" }]);
+          }}
+        >
+          + Add room
+        </button>
       </EditForm>
     </section>
-  );
-}
-function RoomFields({ value }: { value?: Room }) {
-  return (
-    <>
-      <label>
-        Room
-        <input
-          name="room"
-          required
-          maxLength={200}
-          defaultValue={value?.room ?? ""}
-        />
-      </label>
-      <label>
-        Practice groups
-        <textarea
-          name="groups"
-          required
-          defaultValue={value?.groups.map((g) => g.identifier).join(", ") ?? ""}
-        />
-      </label>
-      <p className="field-hint">
-        Separate identifiers with commas or new lines. Each group can be
-        assigned to only one room.
-      </p>
-    </>
   );
 }
 
@@ -666,10 +675,6 @@ export function AssessmentDetail({ id }: { id: string }) {
               <div hidden={!visible.rules}>
                 <SemesterRules base={`/${id}`} plusOnly={visible.plusOnly} />
               </div>
-              <p className="field-hint">
-                Shared settings apply to every document that uses them. Save
-                each edited section separately.
-              </p>
               {(
                 [
                   "MIDTERM",
@@ -699,12 +704,13 @@ export function AssessmentDetail({ id }: { id: string }) {
                     className="document-config-section"
                   >
                     <summary>{policyLabels[code]}</summary>
+                    {types.map((type) => (
+                      <div key={type} hidden={!visible.events(type)}>
+                        {eventEditor(type)}
+                      </div>
+                    ))}
                     <div hidden={!visible.policy(code)}>
-                      <h3>Scoring and assessment policy</h3>
-                      <p className="field-hint">
-                        Maximum and passing scores refer to the whole component.
-                        Retakes use this same policy.
-                      </p>
+                      <h3>Assessment &amp; Scoring</h3>
                       <PolicyEditor
                         code={code}
                         value={data.policies?.find((p) => p.code === code)}
@@ -726,11 +732,6 @@ export function AssessmentDetail({ id }: { id: string }) {
                         }
                       />
                     </div>
-                    {types.map((type) => (
-                      <div key={type} hidden={!visible.events(type)}>
-                        {eventEditor(type)}
-                      </div>
-                    ))}
                   </details>
                 );
               })}
@@ -805,10 +806,14 @@ function PolicyEditor({
         ))}
       </div>
       {(
-        Object.entries(policyTextFields) as [
-          keyof typeof policyTextFields,
-          string,
-        ][]
+        Object.entries(policyTextFields).filter(
+          ([name]) =>
+            ![
+              "retake_rules",
+              "preparation_instructions",
+              "conduct_instructions",
+            ].includes(name),
+        ) as [keyof typeof policyTextFields, string][]
       ).map(([name, label]) => (
         <label key={name}>
           {label}
@@ -819,6 +824,27 @@ function PolicyEditor({
           />
         </label>
       ))}
+      <details className="document-advanced">
+        <summary>Additional instructions and retake rules</summary>{" "}
+        {(
+          Object.entries(policyTextFields).filter(([name]) =>
+            [
+              "retake_rules",
+              "preparation_instructions",
+              "conduct_instructions",
+            ].includes(name),
+          ) as [keyof typeof policyTextFields, string][]
+        ).map(([name, label]) => (
+          <label key={name}>
+            {label}
+            <textarea
+              name={name}
+              maxLength={20000}
+              defaultValue={value?.[name] ?? ""}
+            />
+          </label>
+        ))}
+      </details>{" "}
     </EditForm>
   );
 }
