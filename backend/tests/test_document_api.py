@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from app.database import get_engine
 from test_assessments import setup, BASE
+from app.document_generation.service import DocumentType
 
 pytestmark = [pytest.mark.integration, pytest.mark.skipif(os.getenv('RUN_POSTGRES_TESTS') != '1', reason='Requires local PostgreSQL')]
 
@@ -29,6 +30,12 @@ def test_render_permissions_and_time_roundtrip(setup, role):
     rendered = client.get(endpoint, headers=h)
     assert rendered.status_code == 200 and '10:15--11:45' in rendered.text
     assert '10:05' in rendered.text
+    for kind in DocumentType:
+        preview = client.get(path+f'/documents/{kind.value}/latex', headers=h)
+        assert preview.status_code == 200, preview.text
+        assert preview.headers['content-type'].startswith('text/plain')
+        assert preview.headers['cache-control'] == 'no-store'
+        assert preview.text.startswith(r'\documentclass')
     updated = client.put(event_path, headers=h, json={'event_type':'ENDTERM'})
     assert updated.json()['writing_start_time'] is None and updated.json()['latest_arrival_time'] is None
     assert client.get(path+'/documents/UNSUPPORTED/latex', headers=h).status_code == 422
@@ -38,7 +45,7 @@ def test_render_permissions_and_time_roundtrip(setup, role):
 def test_preview_denied(setup, accounts, role):
     client, _, cid, _, _ = setup()
     _, h = accounts(role)
-    for kind in ['DATES_OF_ASSESSMENTS','ENDTERM_TEST_INFORMATION']:
+    for kind in [item.value for item in DocumentType]:
         url = f'{BASE}/{cid}/documents/{kind}/latex'
         assert client.get(url, headers=h).status_code == 403
         assert client.get(url).status_code == 401

@@ -59,6 +59,8 @@ function ui(api, role = "LECTURER", states = []) {
       },
       "./auth-provider": { useAuth: () => ({ user: { role } }) },
       "./page-heading": { PageHeading: "heading" },
+      "./document-preview": { DocumentWorkspace: "workspace" },
+      "@/lib/document-preview": load("src/lib/document-preview.ts", { "./assessments": lib() }),
       "@/lib/assessments": { ...lib(), assessmentRequest: api },
     },
     {},
@@ -313,6 +315,30 @@ test("proxy forwards all CRUD methods with cookies, CSRF and no cache", async ()
     ["POST", "/7/events/9/rooms"],
     ["PUT", "/7/events/9/rooms/3"],
     ["DELETE", "/7/events/9/rooms/3"],
+    ...[
+      "DATES_OF_ASSESSMENTS",
+      "ENDTERM_TEST_INFORMATION",
+      "RULES_OF_ASSESSMENT",
+      "RULES_OF_EARNING_PLUS_POINTS",
+      "MIDTERM_TEST_INFORMATION",
+      "TEST_RETAKE_INFORMATION",
+      "COURSEWORK_ASSIGNMENT_INFORMATION",
+    ].map((kind) => ["POST", `/7/documents/${kind}/preview`]),
+    ["GET", "/7/rules"],
+    ["PUT", "/7/rules"],
+    ...["MIDTERM", "ENDTERM", "COURSEWORK", "SHORT_QUIZZES"].map((code) => [
+      "PUT",
+      `/7/policies/${code}`,
+    ]),
+    ...[
+      "DATES_OF_ASSESSMENTS",
+      "ENDTERM_TEST_INFORMATION",
+      "RULES_OF_ASSESSMENT",
+      "RULES_OF_EARNING_PLUS_POINTS",
+      "MIDTERM_TEST_INFORMATION",
+      "TEST_RETAKE_INFORMATION",
+      "COURSEWORK_ASSIGNMENT_INFORMATION",
+    ].map((kind) => ["GET", `/7/documents/${kind}/latex`]),
   ]) {
     expected = path;
     const request = new Request(
@@ -330,6 +356,50 @@ test("proxy forwards all CRUD methods with cookies, CSRF and no cache", async ()
     assert.equal(result.status, 200);
     assert.equal(result.headers.get("cache-control"), "no-store");
   }
+});
+
+test("preview proxy preserves LaTeX and rejects unknown paths and mutation methods", async () => {
+  let calls = 0;
+  const handler = load(
+    "src/app/api/assessment-configurations/[[...parts]]/route.ts",
+    {},
+    {
+      process: { env: { API_BASE_URL: "https://backend.example" } },
+      fetch: async () => {
+        calls++;
+        return new Response("\\documentclass{article}", {
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        });
+      },
+    },
+  );
+  async function request(method, path) {
+    const req = new Request(
+      `https://frontend.example/api/assessment-configurations/${path}`,
+      { method },
+    );
+    req.nextUrl = new URL(req.url);
+    return handler[method](req, {
+      params: Promise.resolve({ parts: path.split("/") }),
+    });
+  }
+  const result = await request(
+    "GET",
+    "7/documents/MIDTERM_TEST_INFORMATION/latex",
+  );
+  assert.equal(await result.text(), "\\documentclass{article}");
+  assert.ok(result.headers.get("content-type").startsWith("text/plain"));
+  assert.equal(result.headers.get("vary"), "Cookie");
+  for (const [method, path] of [
+    ["GET", "7/documents/UNKNOWN/latex"],
+    ["GET", "7/documents/../../secrets"],
+    ["PUT", "7/documents/MIDTERM_TEST_INFORMATION/latex"],
+    ["PUT", "7/policies/UNKNOWN"],
+    ["DELETE", "7/rules"],
+  ]) {
+    assert.equal((await request(method, path)).status, 404);
+  }
+  assert.equal(calls, 1);
 });
 
 test("policy payload preserves optional values and fractional scores", () => {
@@ -439,4 +509,26 @@ test("submission editor shows saved group overrides and plain-text seating field
       (n) => n.type === "button" && n.props["data-assessment-change"],
     ),
   );
+});
+
+test("document workspaces retain canonical editors and show only relevant sections", () => {
+  const api = async () => { throw Error("no request during navigation"); };
+  const view = ui(api, "LECTURER", [{ id: 1, academic_year_start: 2030, term: "SPRING", display_label: "Test", events: [], policies: [] }]);
+  const workspace = nodes(view.AssessmentDetail({id: "1"})).find(n => n.type === "workspace");
+  const visibleNodes = node => !node || typeof node !== "object" || node.props?.hidden ? [] : [node, ...[node.props?.children].flat(Infinity).flatMap(visibleNodes)];
+  const cases = {
+    DATES_OF_ASSESSMENTS: [8,4], ENDTERM_TEST_INFORMATION: [1,1], RULES_OF_ASSESSMENT: [8,4],
+    RULES_OF_EARNING_PLUS_POINTS: [0,0], MIDTERM_TEST_INFORMATION: [1,1], TEST_RETAKE_INFORMATION: [1,2], COURSEWORK_ASSIGNMENT_INFORMATION: [4,1],
+  };
+  for (const [kind,[events,policies]] of Object.entries(cases)) {
+    const tree=workspace.props.children(kind), all=nodes(tree), visible=visibleNodes(tree);
+    assert.equal(all.filter(n=>n.type===view.EventEditor).length,8);
+    assert.equal(all.filter(n=>n.type===view.PolicyEditor).length,4);
+    assert.equal(visible.filter(n=>n.type===view.EventEditor).length,events,kind);
+    assert.equal(visible.filter(n=>n.type===view.PolicyEditor).length,policies,kind);
+    for (const policy of visible.filter(n=>n.type===view.PolicyEditor)) {
+      const fields=nodes(view.PolicyEditor(policy.props));
+      for (const name of ["maximum_score","passing_score"]) assert.ok(fields.some(n=>n.type==='input' && n.props.name===name));
+    }
+  }
 });

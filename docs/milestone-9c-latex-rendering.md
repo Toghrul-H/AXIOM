@@ -1,5 +1,73 @@
 # M9C: shared assessment configuration and LaTeX rendering foundation
 
+## M9C.2 update: seven templates
+
+All seven document types now generate LaTeX through the existing authenticated
+`GET /assessment-configurations/{id}/documents/{document_type}/latex` API:
+
+| Document type | Template |
+| --- | --- |
+| `DATES_OF_ASSESSMENTS` | `dates_of_assessments.tex` |
+| `ENDTERM_TEST_INFORMATION` | `endterm_test_information.tex` |
+| `RULES_OF_ASSESSMENT` | `rules_of_assessment.tex` |
+| `RULES_OF_EARNING_PLUS_POINTS` | `rules_of_earning_plus_points.tex` |
+| `MIDTERM_TEST_INFORMATION` | `midterm_test_information.tex` |
+| `TEST_RETAKE_INFORMATION` | `test_retake_information.tex` |
+| `COURSEWORK_ASSIGNMENT_INFORMATION` | `coursework_assignment_information.tex` |
+
+The five supplied PDFs were read in full again for implementation. The source
+section order, introductory explanations and stable student instructions are
+retained. Variable academic rules remain in the M9C shared configuration, not
+reference-semester defaults. Specifically:
+
+- `conduct_instructions` supplies paper/ID requirements, lateness limits,
+  leaving-room restrictions and marking deadlines. The detailed test templates
+  retain beginning/during/end/after headings and stable invigilator instructions.
+- Coursework `assessment_mode` and `conduct_instructions` supply submission
+  format; `preparation_instructions` supplies assignment-specific question guidance
+  (including the source's polar-form and diagram instructions when applicable).
+  The template does not assume every future assignment has those three questions.
+- `plus_points_rules` supplies homework/coding/noncoding/Canvas task awards,
+  quiz names, eligibility, deadlines and submission channels. `total_score_rules`
+  supplies plus-point usage conditions; the cap has one numeric source.
+- Attendance exceptions and replacement-test policies use the existing attendance,
+  total-score and retake descriptions. No legal rule, historical absence allowance
+  or reference access date is silently treated as current semester policy.
+- Rules of assessment uses official scheduled intervals. Midterm/retake detailed
+  information uses writing intervals, with the existing whole-interval fallback.
+  Retake arrival and seating belong to TEST_RETAKE, not MIDTERM or ENDTERM.
+  Original midterm and endterm policies are shown separately for retakers.
+- Both coursework documents and Dates of assessments call the same submission
+  formatter, including sorted group overrides and general-value inheritance.
+- Grade thresholds and maximum total are read from the validated context, not
+  recalculated from source-PDF numbers. Missing policies render neutral text.
+
+The new documents allow missing events and render neutral placeholders. The
+existing Endterm document's missing-event 422 behavior is preserved. Populating
+reviewed semester policies is necessary for complete publication-ready instructions.
+No schema, migration, dependency or configuration-variable change was needed.
+
+The same-origin proxy allowlist now admits all seven preview paths and the existing
+M9C rules/policy routes (previously rejected by the proxy). Cookie/CSRF forwarding,
+no-store responses, role enforcement and unsupported-path rejection remain intact.
+No UI redesign, PDF compilation, download or split-screen preview was added.
+
+The professor-confirmation questions below remain unresolved, including arrival,
+coursework deadline, plus-point scope, fractional thresholds and retake wording.
+The five templates are now implemented; the older scope and verification sections
+below record M9C's original checkpoint rather than the current template count.
+
+M9C.2 changed files: `service.py`, the five new `.tex` files listed above,
+`tests/test_document_api.py`, new `tests/test_seven_documents.py`,
+the frontend assessment proxy route and `frontend/tests/assessments.test.mjs`,
+and this documentation. No existing source PDFs were modified.
+
+M9C.2 verification: focused backend 30 passed; focused frontend 25 passed.
+Full backend 214 passed (two existing Starlette dependency deprecation warnings);
+full frontend 48 passed. Formatting, ESLint, TypeScript, production build and
+`git diff --check` passed. Tests used guarded local PostgreSQL and mocked external
+email delivery. No PDF compilation, production access, commit or deployment occurred.
+
 ## Scope and recovery
 
 Recovered the interrupted M9C work: migration 0011, optional writing times,

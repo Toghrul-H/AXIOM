@@ -12,10 +12,20 @@ from app.document_generation.latex import escape, format_date, format_time, inte
 class DocumentType(str, Enum):
     DATES_OF_ASSESSMENTS = 'DATES_OF_ASSESSMENTS'
     ENDTERM_TEST_INFORMATION = 'ENDTERM_TEST_INFORMATION'
+    RULES_OF_ASSESSMENT = 'RULES_OF_ASSESSMENT'
+    RULES_OF_EARNING_PLUS_POINTS = 'RULES_OF_EARNING_PLUS_POINTS'
+    MIDTERM_TEST_INFORMATION = 'MIDTERM_TEST_INFORMATION'
+    TEST_RETAKE_INFORMATION = 'TEST_RETAKE_INFORMATION'
+    COURSEWORK_ASSIGNMENT_INFORMATION = 'COURSEWORK_ASSIGNMENT_INFORMATION'
 
 TEMPLATES = {
     DocumentType.DATES_OF_ASSESSMENTS: 'dates_of_assessments.tex',
     DocumentType.ENDTERM_TEST_INFORMATION: 'endterm_test_information.tex',
+    DocumentType.RULES_OF_ASSESSMENT: 'rules_of_assessment.tex',
+    DocumentType.RULES_OF_EARNING_PLUS_POINTS: 'rules_of_earning_plus_points.tex',
+    DocumentType.MIDTERM_TEST_INFORMATION: 'midterm_test_information.tex',
+    DocumentType.TEST_RETAKE_INFORMATION: 'test_retake_information.tex',
+    DocumentType.COURSEWORK_ASSIGNMENT_INFORMATION: 'coursework_assignment_information.tex',
 }
 
 def plain(value) -> str:
@@ -46,17 +56,17 @@ def render_context(context: SemesterDocumentContext, document_type: DocumentType
         values[kind + '_TIME'] = interval(event.start_time, event.end_time)
         values[kind + '_START'] = format_time(event.start_time)
         values[kind + '_VENUE'] = venue(event)
-    endterm = context.event('ENDTERM')
-    start, end = writing_times(endterm)
-    values.update(ENDTERM_DOCUMENT_DATE=format_date(endterm.document_date), ENDTERM_WRITING_TIME=interval(start, end),
-                  ENDTERM_WRITING_START=format_time(start), ENDTERM_WRITING_END=format_time(end),
-                  ENDTERM_ARRIVAL=format_time(endterm.latest_arrival_time), ENDTERM_ROOMS=rooms(endterm))
-    values['ENDTERM_ARRIVAL_SENTENCE'] = ('Please arrive by ' + format_time(endterm.latest_arrival_time) + ' the latest.'
-        if endterm.latest_arrival_time else 'The latest required arrival time will be announced later.')
-    values['ENDTERM_WRITING_SENTENCE'] = ' '.join([
-        ('Writing starts at ' + format_time(start) + '.') if start else 'The writing start time will be announced later.',
-        ('Writing finishes at ' + format_time(end) + '.') if end else 'The writing end time will be announced later.',
-    ])
+        start, end = writing_times(event)
+        values[kind + '_DOCUMENT_DATE'] = format_date(event.document_date)
+        values[kind + '_WRITING_TIME'] = interval(start, end)
+        values[kind + '_ROOMS'] = rooms(event)
+        values[kind + '_SEATING'] = plain(event.seating_plan)
+        values[kind + '_ARRIVAL_SENTENCE'] = ('Please arrive by ' + format_time(event.latest_arrival_time) + ' the latest.'
+            if event.latest_arrival_time else 'The latest required arrival time will be announced later.')
+        values[kind + '_WRITING_SENTENCE'] = ' '.join([
+            ('Writing starts at ' + format_time(start) + '.') if start else 'The writing start time will be announced later.',
+            ('Writing finishes at ' + format_time(end) + '.') if end else 'The writing end time will be announced later.',
+        ])
     # Policies are shared by documents, never silently copied from a reference semester.
     for code in ('SHORT_QUIZZES','MIDTERM','ENDTERM','COURSEWORK'):
         policy = context.policy(code)
@@ -66,11 +76,23 @@ def render_context(context: SemesterDocumentContext, document_type: DocumentType
         values[code + '_PASSING_SCORE'] = plain(policy.passing_score)
         values[code + '_COUNT'] = plain(policy.assessment_count)
         values[code + '_DURATION'] = (plain(policy.duration_minutes) + ' minutes') if policy.duration_minutes is not None else plain(policy.duration_description)
-    values['ENDTERM_SEATING'] = plain(endterm.seating_plan)
     for kind in ('COURSEWORK_HAND_IN','COURSEWORK_RETAKE_HAND_IN'):
         values[kind + '_SUBMISSION'] = submission(context.event(kind))
     values['COURSEWORK_DEADLINE'] = submission(context.event('COURSEWORK_HAND_IN'))
     values['COURSEWORK_RETAKE_PUBLICATION_DEADLINE'] = format_date(context.event('COURSEWORK_RETAKE_PUBLICATION').date)
+    rules = context.rules
+    for field in ('course_topics', 'attendance_rules', 'total_score_rules', 'plus_points_maximum', 'plus_points_rules', 'maximum_total_score'):
+        values[field.upper()] = plain(getattr(rules, field, None))
+    if rules and rules.grade_boundaries:
+        rows = sorted(rules.grade_boundaries, key=lambda row: row.grade)
+        values['GRADE_BOUNDARIES'] = '\n'.join([
+            r'\begin{tabular}{ll}\textbf{Minimum total score (inclusive)} & \textbf{Practice grade}\\',
+            *(plain(row.minimum_score) + ' & ' + str(row.grade) + r'\\' for row in reversed(rows)),
+            r'\end{tabular}',
+            'Each range ends at the next grade threshold (exclusive); course-passing conditions also apply.',
+        ])
+    else:
+        values['GRADE_BOUNDARIES'] = 'Grade boundaries will be announced later.'
     template = (Path(__file__).parent / 'templates' / TEMPLATES[document_type]).read_text(encoding='utf-8')
     # Fixed markers only, one pass; replacement strings cannot become new markers.
     return re.sub(r'@@([A-Z_]+)@@', lambda match: values[match.group(1)], template)

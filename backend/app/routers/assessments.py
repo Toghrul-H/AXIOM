@@ -11,6 +11,9 @@ from app.assessment_models import AssessmentConfiguration, AssessmentEvent, Asse
 from app.assessment_schemas import ConfigurationCreate, ConfigurationPatch, ConfigurationRead, ConfigurationDetail, EventWrite, EventRead, RoomWrite, RoomRead
 from fastapi.responses import PlainTextResponse
 from app.document_generation.service import DocumentType, render_document
+from app.document_generation.service import render_context
+from app.document_generation.draft import DraftWrite
+from app.document_generation.preview import draft_preview
 from app.assessment_models import AssessmentPolicy, AssessmentGradeBoundary, AssessmentGroupDeadline
 from app.assessment_policy_schemas import PolicyCode, PolicyWrite, PolicyRead, RulesWrite, RulesRead
 
@@ -23,6 +26,15 @@ Id = Annotated[int, Path(gt=0)]
 @router.get('/{configuration_id}/documents/{document_type}/latex', response_class=PlainTextResponse)
 def preview_latex(configuration_id: Id, document_type: DocumentType, session: DB, actor: Manager):
     return PlainTextResponse(render_document(session, configuration_id, document_type, actor))
+
+@router.post('/{configuration_id}/documents/{document_type}/preview')
+def preview_draft(configuration_id: Id, document_type: DocumentType, payload: DraftWrite, session: DB, actor: Manager):
+    saved = configuration(session, configuration_id)
+    try:
+        context = payload.context(RulesRead.model_validate(saved))
+        return draft_preview(render_context(context, document_type))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
 
 def configuration(session, configuration_id, actor=None):
     if actor is not None:

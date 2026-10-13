@@ -7,10 +7,10 @@ async function forward(
   const { parts = [] } = await context.params;
   const suffix = parts.join("/");
   const patterns: Record<string, RegExp> = {
-    GET: /^(?:[1-9][0-9]*)?$/,
-    POST: /^(?:[1-9][0-9]*\/events(?:\/[1-9][0-9]*\/rooms)?)?$/,
+    GET: /^(?:[1-9][0-9]*(?:\/rules|\/documents\/(?:DATES_OF_ASSESSMENTS|ENDTERM_TEST_INFORMATION|RULES_OF_ASSESSMENT|RULES_OF_EARNING_PLUS_POINTS|MIDTERM_TEST_INFORMATION|TEST_RETAKE_INFORMATION|COURSEWORK_ASSIGNMENT_INFORMATION)\/latex)?)?$/,
+    POST: /^(?:[1-9][0-9]*\/(?:events(?:\/[1-9][0-9]*\/rooms)?|documents\/(?:DATES_OF_ASSESSMENTS|ENDTERM_TEST_INFORMATION|RULES_OF_ASSESSMENT|RULES_OF_EARNING_PLUS_POINTS|MIDTERM_TEST_INFORMATION|TEST_RETAKE_INFORMATION|COURSEWORK_ASSIGNMENT_INFORMATION)\/preview))?$/,
     PATCH: /^[1-9][0-9]*$/,
-    PUT: /^[1-9][0-9]*\/events\/[1-9][0-9]*(?:\/rooms\/[1-9][0-9]*)?$/,
+    PUT: /^[1-9][0-9]*\/(?:events\/[1-9][0-9]*(?:\/rooms\/[1-9][0-9]*)?|rules|policies\/(?:SHORT_QUIZZES|MIDTERM|ENDTERM|COURSEWORK))$/,
     DELETE: /^[1-9][0-9]*(?:\/events\/[1-9][0-9]*(?:\/rooms\/[1-9][0-9]*)?)?$/,
   };
   if (!patterns[request.method]?.test(suffix))

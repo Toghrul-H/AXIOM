@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
+import { documentSections } from "@/lib/document-preview";
+import { DocumentWorkspace } from "./document-preview";
 import {
   policyLabels,
   policyTextFields,
@@ -43,12 +45,14 @@ function EditForm({
   remove,
   label,
   fresh = false,
+  previewScope,
 }: {
   children: React.ReactNode;
   save: (data: FormData) => Promise<void>;
   remove?: () => Promise<void>;
   label: string;
   fresh?: boolean;
+  previewScope?: string;
 }) {
   const [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
@@ -128,6 +132,8 @@ function EditForm({
   return (
     <form
       className="auth-form assessment-form"
+      data-preview-scope={previewScope}
+      data-dirty={dirty}
       onSubmit={submit}
       onClick={(e) => {
         if (
@@ -147,7 +153,7 @@ function EditForm({
         {children}
         <div className="staff-actions">
           <button className="button button-primary">
-            {busy ? "Saving…" : "Save"}
+            {busy ? "Saving…" : `Save ${label}`}
           </button>
           {remove && (
             <button
@@ -382,6 +388,7 @@ function EventEditor({
       </p>
       <EditForm
         key={value?.id ?? "new"}
+        previewScope={`event:${type}`}
         label={eventLabels[type]}
         save={async (form) => {
           const saved = await assessmentRequest<AssessmentEvent>(
@@ -450,7 +457,9 @@ function EventEditor({
           />
         </label>
         <p className="field-hint">
-          All schedule fields are optional. Times use the local campus clock.
+          Scheduled times are the official interval; actual writing times
+          describe the test itself. Arrival is independent. All are optional and
+          use the local campus clock.
         </p>
       </EditForm>
       {roomEventTypes.includes(type) &&
@@ -496,6 +505,7 @@ function Rooms({
         <div className="panel" key={room.id}>
           <h4>{room.room}</h4>
           <EditForm
+            previewScope={`room:${event.event_type}:${room.id}`}
             label="room assignment"
             save={async (form) => {
               const saved = await assessmentRequest<Room>(
@@ -519,6 +529,7 @@ function Rooms({
       <h4>Add room assignment</h4>
       <EditForm
         key={version}
+        previewScope={`room:${event.event_type}:new`}
         label="room assignment"
         fresh
         save={async (form) => {
@@ -594,6 +605,30 @@ export function AssessmentDetail({ id }: { id: string }) {
     ) : (
       <p role="status">Loading semester…</p>
     );
+  function eventEditor(type: EventType) {
+    return (
+      <EventEditor
+        type={type}
+        value={data!.events.find((e) => e.event_type === type)}
+        base={`/${id}`}
+        update={(change) =>
+          setData((current) => {
+            if (!current) return current;
+            const value = change(
+              current.events.find((e) => e.event_type === type),
+            );
+            return {
+              ...current,
+              events: [
+                ...current.events.filter((e) => e.event_type !== type),
+                ...(value ? [value] : []),
+              ],
+            };
+          })
+        }
+      />
+    );
+  }
   return (
     <>
       <Link href="/teacher/assessments">Back to Assessment Documents</Link>
@@ -602,84 +637,110 @@ export function AssessmentDetail({ id }: { id: string }) {
         title={data.display_label}
         description={`${data.academic_year_start}/${String(data.academic_year_start + 1).slice(-2)} · ${data.term === "FALL" ? "Fall" : "Spring"}`}
       />
-      <details className="panel quiz-panel">
-        <summary>Edit semester details</summary>
-        <EditForm
-          label="semester"
-          save={async (form) => {
-            const saved = await assessmentRequest<Detail>(
-              `/${id}`,
-              "PATCH",
-              metadata(form),
-            );
-            setData((current) =>
-              current
-                ? { ...current, ...saved, events: current.events }
-                : saved,
-            );
-          }}
-        >
-          <MetadataFields value={data} />
-        </EditForm>
-      </details>
-      <SemesterRules base={`/${id}`} />
-      <section className="panel quiz-panel">
-        <h2>Shared assessment policies</h2>
-        <p>
-          Configure each component once for all documents and its retakes. Leave
-          unknown values empty. Maximum and passing scores refer to the whole
-          component, not one short quiz. These settings describe the course;
-          they do not grade student attempts.
-        </p>
-        {(Object.keys(policyLabels) as PolicyCode[]).map((code) => (
-          <details key={code}>
-            <summary>{policyLabels[code]}</summary>
-            <PolicyEditor
-              code={code}
-              value={data.policies?.find((p) => p.code === code)}
-              base={`/${id}`}
-              update={(saved) =>
-                setData((current) =>
-                  current
-                    ? {
-                        ...current,
-                        policies: [
-                          ...(current.policies ?? []).filter(
-                            (p) => p.code !== code,
-                          ),
-                          saved,
-                        ],
-                      }
-                    : current,
-                )
-              }
-            />
-          </details>
-        ))}
-      </section>
-      {(Object.keys(eventLabels) as EventType[]).map((type) => (
-        <EventEditor
-          key={type}
-          type={type}
-          value={data.events.find((e) => e.event_type === type)}
-          base={`/${id}`}
-          update={(change) =>
-            setData((current) => {
-              if (!current) return current;
-              const value = change(
-                current.events.find((e) => e.event_type === type),
-              );
-              return {
-                ...current,
-                events: [
-                  ...current.events.filter((e) => e.event_type !== type),
-                  ...(value ? [value] : []),
-                ],
-              };
-            })
-          }
-        />
-      ))}
+      <DocumentWorkspace id={id}>
+        {(kind) => {
+          const visible = documentSections(kind);
+          return (
+            <>
+              <details className="panel quiz-panel">
+                <summary>Edit semester details</summary>
+                <EditForm
+                  previewScope="metadata"
+                  label="semester"
+                  save={async (form) => {
+                    const saved = await assessmentRequest<Detail>(
+                      `/${id}`,
+                      "PATCH",
+                      metadata(form),
+                    );
+                    setData((current) =>
+                      current
+                        ? { ...current, ...saved, events: current.events }
+                        : saved,
+                    );
+                  }}
+                >
+                  <MetadataFields value={data} />
+                </EditForm>
+              </details>
+              <div hidden={!visible.rules}>
+                <SemesterRules base={`/${id}`} plusOnly={visible.plusOnly} />
+              </div>
+              <p className="field-hint">
+                Shared settings apply to every document that uses them. Save
+                each edited section separately.
+              </p>
+              {(
+                [
+                  "MIDTERM",
+                  "ENDTERM",
+                  "SHORT_QUIZZES",
+                  "COURSEWORK",
+                ] as PolicyCode[]
+              ).map((code) => {
+                const types = (Object.keys(eventLabels) as EventType[]).filter(
+                  (type) =>
+                    code === "COURSEWORK"
+                      ? type.startsWith("COURSEWORK_")
+                      : code === "SHORT_QUIZZES"
+                        ? type === "SHORT_QUIZ_RETAKE"
+                        : type === code,
+                );
+                return (
+                  <details
+                    open={
+                      kind !== "DATES_OF_ASSESSMENTS" &&
+                      kind !== "RULES_OF_ASSESSMENT"
+                    }
+                    key={code}
+                    hidden={
+                      !visible.policy(code) && !types.some(visible.events)
+                    }
+                    className="document-config-section"
+                  >
+                    <summary>{policyLabels[code]}</summary>
+                    <div hidden={!visible.policy(code)}>
+                      <h3>Scoring and assessment policy</h3>
+                      <p className="field-hint">
+                        Maximum and passing scores refer to the whole component.
+                        Retakes use this same policy.
+                      </p>
+                      <PolicyEditor
+                        code={code}
+                        value={data.policies?.find((p) => p.code === code)}
+                        base={`/${id}`}
+                        update={(saved) =>
+                          setData((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  policies: [
+                                    ...(current.policies ?? []).filter(
+                                      (p) => p.code !== code,
+                                    ),
+                                    saved,
+                                  ],
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                    </div>
+                    {types.map((type) => (
+                      <div key={type} hidden={!visible.events(type)}>
+                        {eventEditor(type)}
+                      </div>
+                    ))}
+                  </details>
+                );
+              })}
+              <div hidden={!visible.events("TEST_RETAKE")}>
+                {eventEditor("TEST_RETAKE")}
+              </div>
+            </>
+          );
+        }}
+      </DocumentWorkspace>
     </>
   );
 }
@@ -697,6 +758,7 @@ function PolicyEditor({
 }) {
   return (
     <EditForm
+      previewScope={`policy:${code}`}
       label={policyLabels[code]}
       save={async (form) =>
         update(
@@ -708,21 +770,6 @@ function PolicyEditor({
         )
       }
     >
-      {(
-        Object.entries(policyTextFields) as [
-          keyof typeof policyTextFields,
-          string,
-        ][]
-      ).map(([name, label]) => (
-        <label key={name}>
-          {label}
-          <textarea
-            name={name}
-            maxLength={20000}
-            defaultValue={value?.[name] ?? ""}
-          />
-        </label>
-      ))}
       <div className="assessment-fields">
         {(
           Object.entries(policyNumberFields) as [
@@ -757,10 +804,31 @@ function PolicyEditor({
           </label>
         ))}
       </div>
+      {(
+        Object.entries(policyTextFields) as [
+          keyof typeof policyTextFields,
+          string,
+        ][]
+      ).map(([name, label]) => (
+        <label key={name}>
+          {label}
+          <textarea
+            name={name}
+            maxLength={20000}
+            defaultValue={value?.[name] ?? ""}
+          />
+        </label>
+      ))}
     </EditForm>
   );
 }
-function SemesterRules({ base }: { base: string }) {
+function SemesterRules({
+  base,
+  plusOnly = false,
+}: {
+  base: string;
+  plusOnly?: boolean;
+}) {
   const [rules, setRules] = useState<Rules | null>(null),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0);
@@ -774,8 +842,12 @@ function SemesterRules({ base }: { base: string }) {
     return () => abort.abort();
   }, [base, revision]);
   return (
-    <details className="panel quiz-panel">
-      <summary>Semester scoring and academic rules</summary>
+    <section className="panel quiz-panel">
+      <h2>
+        {plusOnly
+          ? "Plus points rules and limits"
+          : "Semester scoring and academic rules"}
+      </h2>
       {!rules ? (
         error ? (
           <p role="alert">
@@ -802,6 +874,7 @@ function SemesterRules({ base }: { base: string }) {
             rules are inferred from earlier semesters.
           </p>
           <EditForm
+            previewScope="rules"
             label="semester rules"
             save={async (form) =>
               setRules(
@@ -819,7 +892,14 @@ function SemesterRules({ base }: { base: string }) {
                 string,
               ][]
             ).map(([name, label]) => (
-              <label key={name}>
+              <label
+                key={name}
+                hidden={
+                  plusOnly &&
+                  name !== "plus_points_rules" &&
+                  name !== "total_score_rules"
+                }
+              >
                 {label}
                 <textarea
                   name={name}
@@ -839,34 +919,36 @@ function SemesterRules({ base }: { base: string }) {
                 defaultValue={rules.plus_points_maximum ?? ""}
               />
             </label>
-            <h3>Grade minimum scores</h3>
-            <p>
-              Enter all five thresholds, starting grade 1 at zero, or leave all
-              empty. Each grade extends up to the next threshold (exclusive).
-              Course-passing conditions remain separate.
-            </p>
-            <div className="assessment-fields">
-              {[1, 2, 3, 4, 5].map((grade) => (
-                <label key={grade}>
-                  Grade {grade}
-                  <input
-                    name={`grade_${grade}`}
-                    type="number"
-                    min={0}
-                    max={100000}
-                    step="0.01"
-                    defaultValue={
-                      rules.grade_boundaries.find((b) => b.grade === grade)
-                        ?.minimum_score ?? ""
-                    }
-                  />
-                </label>
-              ))}
-            </div>
+            <div hidden={plusOnly}>
+              <h3>Grade minimum scores</h3>
+              <p>
+                Enter all five thresholds, starting grade 1 at zero, or leave
+                all empty. Each grade extends up to the next threshold
+                (exclusive). Course-passing conditions remain separate.
+              </p>
+              <div className="assessment-fields">
+                {[1, 2, 3, 4, 5].map((grade) => (
+                  <label key={grade}>
+                    Grade {grade}
+                    <input
+                      name={`grade_${grade}`}
+                      type="number"
+                      min={0}
+                      max={100000}
+                      step="0.01"
+                      defaultValue={
+                        rules.grade_boundaries.find((b) => b.grade === grade)
+                          ?.minimum_score ?? ""
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>{" "}
           </EditForm>
         </>
       )}
-    </details>
+    </section>
   );
 }
 function SubmissionFields({ value }: { value?: AssessmentEvent }) {
