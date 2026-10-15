@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
-import { documentSections } from "@/lib/document-preview";
+import { documentSections, formValues } from "@/lib/document-preview";
 import { DocumentWorkspace } from "./document-preview";
 import {
   policyLabels,
@@ -60,6 +60,15 @@ function EditForm({
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const lock = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Compare committed input values with the initial/last successful save snapshot.
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form || busy) return;
+    const current = formValues(new FormData(form));
+    form.dataset.savedValues ??= current;
+    setDirty(current !== form.dataset.savedValues);
+  }, [busy, children]);
   useEffect(() => {
     if (!dirty && !busy) return;
     const unload = (e: BeforeUnloadEvent) => {
@@ -87,15 +96,20 @@ function EditForm({
     e.preventDefault();
     if (lock.current) return;
     const form = e.currentTarget;
+    const submitted = new FormData(form);
     lock.current = true;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await save(new FormData(form));
+      await save(submitted);
+      form.dataset.savedValues = formValues(submitted);
       setDirty(false);
       setNotice("Saved.");
-      if (fresh) form.reset();
+      if (fresh) {
+        form.reset();
+        delete form.dataset.savedValues;
+      }
     } catch (error) {
       setError(
         error instanceof Error
@@ -132,6 +146,7 @@ function EditForm({
   }
   return (
     <form
+      ref={formRef}
       className="auth-form assessment-form"
       data-preview-scope={previewScope}
       data-dirty={dirty}
@@ -145,8 +160,11 @@ function EditForm({
           setNotice("");
         }
       }}
-      onChange={() => {
-        setDirty(true);
+      onChange={(e) => {
+        setDirty(
+          formValues(new FormData(e.currentTarget)) !==
+            e.currentTarget.dataset.savedValues,
+        );
         setNotice("");
       }}
     >

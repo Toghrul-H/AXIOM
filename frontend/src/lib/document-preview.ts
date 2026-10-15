@@ -52,6 +52,33 @@ export type PreviewNode = {
 export type Preview = { blocks: PreviewNode[]; label: string };
 export type FormSnapshot = { scope: string; values: FormData; dirty: boolean };
 
+export function formValues(data: FormData) {
+  return JSON.stringify(Array.from(data.entries()));
+}
+
+export function hasUnsavedDocumentChanges(
+  element: HTMLElement,
+  kind: DocumentType,
+) {
+  const sections = documentSections(kind);
+  return Array.from(
+    element.querySelectorAll<HTMLFormElement>("form[data-preview-scope]"),
+  ).some((form) => {
+    const [scope, code] = form.dataset.previewScope!.split(":");
+    const relevant =
+      scope === "metadata" ||
+      (scope === "rules" && sections.rules) ||
+      (scope === "policy" && sections.policy(code)) ||
+      ((scope === "event" || scope === "rooms") &&
+        sections.events(code as EventType));
+    return (
+      relevant &&
+      (Boolean(form.querySelector("fieldset:disabled")) ||
+        form.dataset.savedValues !== formValues(new FormData(form)))
+    );
+  });
+}
+
 // Snapshot current DOM values: defaultValue and saved React state may be older.
 export function draftFromForms(forms: FormSnapshot[]) {
   const meta = forms.find((f) => f.scope === "metadata")?.values;
@@ -139,4 +166,19 @@ export function previewScheduler<T>(
       abort?.abort();
     },
   };
+}
+
+export function snapshotEditor(element: HTMLElement) {
+  const forms = Array.from(
+    element.querySelectorAll<HTMLFormElement>("form[data-preview-scope]"),
+  );
+  if (forms.some((form) => form.querySelector("fieldset:disabled")))
+    throw new Error("Wait for saving to finish before generating a document.");
+  return draftFromForms(
+    forms.map((form) => ({
+      scope: form.dataset.previewScope!,
+      values: new FormData(form),
+      dirty: form.dataset.dirty === "true",
+    })),
+  );
 }

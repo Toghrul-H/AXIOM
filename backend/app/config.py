@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     database_name: str = "dmi_platform"
     database_user: str = "dmi_app"
     database_password: SecretStr = SecretStr("")
+    pdf_compiler_mode: Literal['disabled', 'docker', 'native'] = 'disabled'
+    pdf_docker_executable: str = 'docker'
+    pdf_tectonic_executable: str = '/usr/local/bin/tectonic'
+    pdf_cache_directory: str = '/opt/tectonic-cache'
+    pdf_timeout_seconds: int = Field(default=30, ge=1, le=60)
+    pdf_max_bytes: int = Field(default=4_000_000, ge=1024, le=4_000_000)
     auth_cookie_secure: bool = False
     email_delivery_provider: Literal['smtp', 'brevo'] = 'smtp'
     brevo_api_key: SecretStr = SecretStr('')

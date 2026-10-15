@@ -9,7 +9,8 @@ from app.auth_models import User
 from app.database import get_session
 from app.assessment_models import AssessmentConfiguration, AssessmentEvent, AssessmentRoom, AssessmentRoomGroup
 from app.assessment_schemas import ConfigurationCreate, ConfigurationPatch, ConfigurationRead, ConfigurationDetail, EventWrite, EventRead, RoomWrite, RoomRead
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
+from app.document_generation.compiler import compile_pdf
 from app.document_generation.service import DocumentType, render_document
 from app.document_generation.service import render_context
 from app.document_generation.draft import DraftWrite
@@ -35,6 +36,22 @@ def preview_draft(configuration_id: Id, document_type: DocumentType, payload: Dr
         return draft_preview(render_context(context, document_type))
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
+
+@router.post('/{configuration_id}/documents/{document_type}/pdf')
+def download_pdf(configuration_id: Id, document_type: DocumentType, payload: DraftWrite, session: DB, actor: Manager):
+    saved = configuration(session, configuration_id)
+    try:
+        source = render_context(payload.context(RulesRead.model_validate(saved)), document_type)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    # Snapshot is complete; do not hold a database transaction during compilation.
+    session.rollback()
+    pdf = compile_pdf(source)
+    return Response(pdf, media_type='application/pdf', headers={
+        'Content-Disposition': f'attachment; filename="axiom-{configuration_id}-{document_type.value.lower()}.pdf"',
+        'Cache-Control': 'no-store',
+    })
+
 
 def configuration(session, configuration_id, actor=None):
     if actor is not None:

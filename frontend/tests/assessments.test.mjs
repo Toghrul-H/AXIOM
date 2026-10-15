@@ -73,6 +73,31 @@ function form(values) {
   for (const [k, v] of Object.entries(values)) result.set(k, v);
   return result;
 }
+
+test('save baseline advances only after success and failed saves preserve it', async () => {
+  const preview = load('src/lib/document-preview.ts', {'./assessments': lib()});
+  const values = form({venue:'New hall'});
+  const element = {dataset:{savedValues:preview.formValues(form({venue:'Old hall'}))}, values};
+  const module = load('src/components/assessment-editor.tsx', {
+    'react/jsx-runtime':jsx,
+    react:{useEffect:()=>{},useRef:initial=>({current:initial}),useState:initial=>[initial,()=>{}]},
+    '@/lib/document-preview':preview,
+  }, {FormData:class {constructor(form){const copy = new FormData(); for (const [key,value] of form.values) copy.append(key,value); return copy;}}}, '\nexport { EditForm };');
+  // FormData is copied so the baseline represents the submitted request.
+  // Node FormData cannot clone directly; provide the browser-form equivalent.
+  let resolve, reject;
+  const pendingSave = () => new Promise((ok, fail) => {resolve=ok;reject=fail;});
+  const tree = module.EditForm({children:null,label:'event',save:pendingSave});
+  const original = element.dataset.savedValues;
+  const request = tree.props.onSubmit({preventDefault(){},currentTarget:element});
+  reject(Error('Server rejected save'));
+  await request;
+  assert.equal(element.dataset.savedValues,original);
+  const success = tree.props.onSubmit({preventDefault(){},currentTarget:element});
+  assert.equal(element.dataset.savedValues,original);
+  resolve(); await success;
+  assert.equal(element.dataset.savedValues,preview.formValues(values));
+});
 test("scheduled, writing and arrival times stay separate in editor payload", () => {
   const payload = lib().eventInput(
     form({
@@ -303,7 +328,7 @@ test("proxy forwards all CRUD methods with cookies, CSRF and no cache", async ()
         assert.equal(init.headers.get("x-csrf-token"), "csrf");
         assert.equal(init.cache, "no-store");
         assert.equal(init.redirect, "manual");
-        return Response.json({});
+        return expected.endsWith("/pdf") ? new Response(new Uint8Array([37,80,68,70,45,0,255]), {headers:{"content-type":"application/pdf","content-disposition":"attachment; filename=sample.pdf"}}) : Response.json({});
       },
     },
   );
@@ -324,7 +349,7 @@ test("proxy forwards all CRUD methods with cookies, CSRF and no cache", async ()
       "MIDTERM_TEST_INFORMATION",
       "TEST_RETAKE_INFORMATION",
       "COURSEWORK_ASSIGNMENT_INFORMATION",
-    ].map((kind) => ["POST", `/7/documents/${kind}/preview`]),
+    ].flatMap((kind) => [["POST", `/7/documents/${kind}/preview`],["POST", `/7/documents/${kind}/pdf`]]),
     ["GET", "/7/rules"],
     ["PUT", "/7/rules"],
     ...["MIDTERM", "ENDTERM", "COURSEWORK", "SHORT_QUIZZES"].map((code) => [
@@ -356,6 +381,7 @@ test("proxy forwards all CRUD methods with cookies, CSRF and no cache", async ()
     });
     assert.equal(result.status, 200);
     assert.equal(result.headers.get("cache-control"), "no-store");
+    if(path.endsWith("/pdf")) { assert.equal(result.headers.get("content-disposition"),"attachment; filename=sample.pdf"); assert.deepEqual([...new Uint8Array(await result.arrayBuffer())],[37,80,68,70,45,0,255]); }
   }
 });
 

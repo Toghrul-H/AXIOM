@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { downloadAssessmentPdf } from "@/lib/assessment-pdf";
 import { assessmentRequest } from "@/lib/assessments";
 import {
   documentLabels,
-  draftFromForms,
+  hasUnsavedDocumentChanges,
+  snapshotEditor,
   previewScheduler,
   type DocumentType,
   type Preview,
@@ -86,24 +88,48 @@ export function DocumentWorkspace({
     [error, setError] = useState("");
   const [dirty, setDirty] = useState(false),
     [retry, setRetry] = useState(0);
+  const [generating, setGenerating] = useState(false),
+    [pdfError, setPdfError] = useState("");
+  const downloadLock = useRef(false);
+  const downloadAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => downloadAbort.current?.abort(), []);
+  async function download() {
+    if (downloadLock.current || !editor.current) return;
+    if (hasUnsavedDocumentChanges(editor.current, kind)) {
+      setPdfError(
+        "You have unsaved changes. Please save your changes before downloading the PDF.",
+      );
+      return;
+    }
+    downloadLock.current = true;
+    setGenerating(true);
+    setPdfError("");
+    const abort = new AbortController();
+    downloadAbort.current = abort;
+    try {
+      await downloadAssessmentPdf(
+        id,
+        kind,
+        snapshotEditor(editor.current),
+        abort.signal,
+      );
+    } catch (error) {
+      if (!abort.signal.aborted)
+        setPdfError(
+          error instanceof Error
+            ? error.message
+            : "PDF download failed. Please retry.",
+        );
+    } finally {
+      downloadLock.current = false;
+      if (!abort.signal.aborted) setGenerating(false);
+    }
+  }
   useEffect(() => {
     const element = editor.current;
     if (!element) return;
     const scheduler = previewScheduler(
-      () => {
-        const forms = Array.from(
-          element.querySelectorAll<HTMLFormElement>("form[data-preview-scope]"),
-        );
-        if (forms.some((form) => form.querySelector("fieldset:disabled")))
-          throw new Error("Preview will refresh when saving finishes.");
-        return draftFromForms(
-          forms.map((form) => ({
-            scope: form.dataset.previewScope!,
-            values: new FormData(form),
-            dirty: form.dataset.dirty === "true",
-          })),
-        );
-      },
+      () => snapshotEditor(element),
       (draft, signal) =>
         assessmentRequest<Preview>(
           `/${id}/documents/${kind}/preview`,
@@ -178,6 +204,20 @@ export function DocumentWorkspace({
         >
           <header className="document-preview-toolbar">
             <h2>Draft Preview</h2>
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={generating}
+              onClick={download}
+            >
+              {generating ? "Generating PDF…" : "Download PDF"}
+            </button>
+            {generating && (
+              <p role="status">
+                Generating the selected document from your current edits…
+              </p>
+            )}
+            {pdfError && <p role="alert">{pdfError}</p>}
             <h3>{documentLabels[kind]}</h3>
             <p className="draft-save-state" role="status">
               {dirty ? "Unsaved changes — preview only" : "Saved configuration"}

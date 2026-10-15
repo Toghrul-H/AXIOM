@@ -8,7 +8,7 @@ async function forward(
   const suffix = parts.join("/");
   const patterns: Record<string, RegExp> = {
     GET: /^(?:[1-9][0-9]*(?:\/rules|\/documents\/(?:DATES_OF_ASSESSMENTS|ENDTERM_TEST_INFORMATION|RULES_OF_ASSESSMENT|RULES_OF_EARNING_PLUS_POINTS|MIDTERM_TEST_INFORMATION|TEST_RETAKE_INFORMATION|COURSEWORK_ASSIGNMENT_INFORMATION)\/latex)?)?$/,
-    POST: /^(?:[1-9][0-9]*\/(?:events(?:\/[1-9][0-9]*\/rooms)?|documents\/(?:DATES_OF_ASSESSMENTS|ENDTERM_TEST_INFORMATION|RULES_OF_ASSESSMENT|RULES_OF_EARNING_PLUS_POINTS|MIDTERM_TEST_INFORMATION|TEST_RETAKE_INFORMATION|COURSEWORK_ASSIGNMENT_INFORMATION)\/preview))?$/,
+    POST: /^(?:[1-9][0-9]*\/(?:events(?:\/[1-9][0-9]*\/rooms)?|documents\/(?:DATES_OF_ASSESSMENTS|ENDTERM_TEST_INFORMATION|RULES_OF_ASSESSMENT|RULES_OF_EARNING_PLUS_POINTS|MIDTERM_TEST_INFORMATION|TEST_RETAKE_INFORMATION|COURSEWORK_ASSIGNMENT_INFORMATION)\/(?:preview|pdf)))?$/,
     PATCH: /^[1-9][0-9]*$/,
     PUT: /^[1-9][0-9]*\/(?:events\/[1-9][0-9]*(?:\/rooms\/[1-9][0-9]*)?|rules|policies\/(?:SHORT_QUIZZES|MIDTERM|ENDTERM|COURSEWORK))$/,
     DELETE: /^[1-9][0-9]*(?:\/events\/[1-9][0-9]*(?:\/rooms\/[1-9][0-9]*)?)?$/,
@@ -62,6 +62,14 @@ async function forward(
           response.headers.get("content-type") ?? "application/json",
         "Cache-Control": "no-store",
         Vary: "Cookie",
+        ...(response.headers.get("content-disposition")
+          ? {
+              "Content-Disposition": response.headers.get(
+                "content-disposition",
+              )!,
+            }
+          : {}),
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch {

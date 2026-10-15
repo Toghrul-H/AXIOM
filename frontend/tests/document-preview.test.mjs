@@ -267,3 +267,70 @@ test("native input waits for React controlled commit before scheduling preview; 
   assert.equal(scheduled,1);
   listeners.get('input')();cleanup();assert.equal(timers.size,0);assert.equal(listeners.size,0);
 });
+
+test("PDF download sends unsaved snapshot for each document and releases blob URLs",async()=>{
+  const requests=[],downloads=[],revoked=[];
+  const helper=load('lib/assessment-pdf.ts',{'./auth':{apiFetch:async(path,init)=>{requests.push({path,init});return new Response('%PDF-1.7',{headers:{'content-type':'application/pdf'}})}}},{
+    URL:{createObjectURL:()=> 'blob:test',revokeObjectURL:url=>revoked.push(url)},
+    document:{body:{appendChild:()=>{}},createElement:()=>({click(){downloads.push(this.download)},remove(){}})},
+    setTimeout:fn=>fn(),
+  });
+  const draft=preview.draftFromForms(samples());
+  for(const kind of Object.keys(preview.documentLabels)) await helper.downloadAssessmentPdf('1',kind,draft);
+  assert.equal(downloads.length,7);assert.equal(revoked.length,7);
+  assert.equal(JSON.parse(requests[0].init.body).events[0].venue,'Unsaved room');
+  assert.ok(requests.every(r=>r.path.endsWith('/pdf') && r.init.method==='POST'));
+  const failed=load('lib/assessment-pdf.ts',{'./auth':{apiFetch:async()=>Response.json({detail:'Compiler busy'},{status:503})}});
+  await assert.rejects(failed.downloadAssessmentPdf('1','DATES_OF_ASSESSMENTS',draft),/Compiler busy/);
+});
+
+test("Download PDF prevents duplicate clicks and reports errors without altering editor values",async()=>{
+  let calls=0,reject, index=0;const updates=[];
+  const helper=load('components/document-preview.tsx',{
+    'react/jsx-runtime':jsx,
+    react:{useEffect:()=>{},useRef:initial=>({current:index++===0?{}:initial}),useState:initial=>[initial,value=>updates.push(value)]},
+    '@/lib/assessments':assessments,
+    '@/lib/document-preview':{...preview,hasUnsavedDocumentChanges:()=>false,snapshotEditor:()=>({saved:'retained'})},
+    '@/lib/assessment-pdf':{downloadAssessmentPdf:()=>{calls++;return new Promise((_,r)=>reject=r)}},
+  });
+  const tree=helper.DocumentWorkspace({id:'1',children:()=>null});
+  const button=nodes(tree).find(n=>n.type==='button' && n.props.children==='Download PDF');
+  const pending=button.props.onClick();await button.props.onClick();assert.equal(calls,1);
+  reject(Error('Try again'));await pending;assert.ok(updates.includes('Try again'));assert.equal(updates.at(-1),false);
+});
+
+test('PDF guard compares values, allows reverts, and checks only relevant sections', () => {
+  const forms = samples().map(sample => ({
+    dataset: {previewScope: sample.scope, savedValues: preview.formValues(sample.values)},
+    values: sample.values,
+    querySelector: () => null,
+  }));
+  const module = load('lib/document-preview.ts', {'./assessments': assessments}, {
+    FormData: class { constructor(form) { return form.values; } },
+  });
+  const editor = {querySelectorAll: () => forms};
+  const dirty = () => module.hasUnsavedDocumentChanges(editor, 'ENDTERM_TEST_INFORMATION');
+  assert.equal(dirty(), false);
+  forms[1].values.set('venue', 'Edited');
+  assert.equal(dirty(), true);
+  assert.equal(module.hasUnsavedDocumentChanges(editor, 'MIDTERM_TEST_INFORMATION'), false);
+  forms[1].values.set('venue', 'Unsaved room');
+  assert.equal(dirty(), false);
+  forms[1].querySelector = () => ({});
+  assert.equal(dirty(), true); // Saving is not success.
+});
+
+test('Download PDF with unsaved values shows exact error without requesting or saving', async () => {
+  let index = 0, calls = 0;
+  const updates = [];
+  const module = load('components/document-preview.tsx', {
+    'react/jsx-runtime': jsx,
+    react: {useEffect:()=>{},useRef:initial=>({current:index++===0?{}:initial}),useState:initial=>[initial,value=>updates.push(value)]},
+    '@/lib/document-preview': {...preview, hasUnsavedDocumentChanges:()=>true, snapshotEditor:()=>{throw Error('Must not snapshot/download');}},
+    '@/lib/assessment-pdf': {downloadAssessmentPdf:()=>{calls++;}},
+  });
+  const tree = module.DocumentWorkspace({id:'1',children:()=>null});
+  await nodes(tree).find(n=>n.type==='button' && n.props.children==='Download PDF').props.onClick();
+  assert.equal(calls,0);
+  assert.deepEqual(updates,['You have unsaved changes. Please save your changes before downloading the PDF.']);
+});
