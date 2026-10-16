@@ -1,0 +1,15 @@
+# Allowlist: never send .env, local credentials, virtualenvs or test output to builds.
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!app/
+!app/**
+!alembic/
+!alembic/**
+!alembic.ini
+**/__pycache__/**
+**/*.pyc
+**/.env*
+**/*.pem
+**/*.key
