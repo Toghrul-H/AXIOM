@@ -12,30 +12,61 @@ official ELTE production system and does not imply institutional endorsement.
 
 ## Status
 
-Implemented through **M6A/M6B Student Progress Tracking**, with **AXIOM Design v1**.
-The application runs locally. Public deployment is being prepared; no hosted demo
-is advertised here. Planned tools are clearly labeled placeholders.
+AXIOM is reported by its owner as deployed as a working academic internship project.
+Documentation was checked against repository source on 28 October 2026; live
+hosting configuration and availability were not inspected during this handover.
+
+- **Frontend:** https://axiom-orcin-xi.vercel.app/
+- **Backend:** https://axiom-api-te6o.onrender.com/
+- **Database:** PostgreSQL hosted on Neon.
+- **Database migrations:** Source head is `0012`; the owner reports this as the latest verified deployed revision.
+- **Historical backend verification:** 242 tests passed, including PostgreSQL integration tests (owner-reported; not rerun for this documentation review).
+
+Implemented functionality includes structured question management, student quizzes,
+progress analytics, role-based authentication, email verification, manual grading,
+assessment configuration, event and room management, and LaTeX/PDF generation.
+
+AXIOM remains an academic internship project and is not an officially endorsed
+ELTE production system.
 
 ## Features and roles
 
-- Structured Question Bank with course topics, response types and skill taxonomy.
-- Quiz composition, saved student attempts and immutable question snapshots.
-- Mathematical Unicode answer input, objective grading, results and solution review.
-- Progress overview, topic/skill performance and recent completed attempts.
-- Session authentication, server-enforced role checks and private attempt ownership.
+### Implemented features
 
-| Role | Implemented capabilities |
-| --- | --- |
-| Student | Register, take/resume quizzes, review submitted attempts and view personal progress |
-| Demonstrator | Manage Question Bank resources and quizzes |
-| Lecturer | Staff teaching tools; promote Students to Demonstrators and manage their active status |
-| Admin | Staff teaching tools and Lecturer/account management under the existing role rules |
+- **Question Bank:** Structured questions, topics, skills, response types and mathematical input.
+- **Student quizzes:** Quiz attempts, saved answers, automatic grading of supported objective questions, results and solution review.
+- **Student progress:** Personal progress analytics, topic performance and completed attempt history.
+- **Authentication:** Registration, email verification, secure server-side sessions and role-based access control.
+- **Manual grading:** Staff review and grading of supported written responses.
+- **Assessment management:** Assessment configurations, policies, events and room management.
+- **LaTeX/PDF generation:** Assessment document preview and PDF generation.
 
-Public registration creates Students only. The first Admin is bootstrapped through
-a local command. Written responses are saved and shown with reference solutions;
-they are **not automatically graded**. Auto-graded practice accuracy is not an exam
-grade: it includes answered objective questions with a stored correctness result,
-excludes ungraded responses and returns no score when there is no graded data.
+### User roles
+
+| Role         | Responsibilities                                                      |
+| ------------ | --------------------------------------------------------------------- |
+| Student      | Complete quizzes, review results and track personal progress          |
+| Demonstrator | Manage teaching resources and perform permitted grading tasks         |
+| Lecturer     | Manage teaching resources, assessments and permitted staff operations |
+| Admin        | Administrative account management and authorized teaching operations  |
+
+Public registration requires an exact `@inf.elte.hu` address and email verification;
+it creates Student accounts only. Access to protected
+operations is enforced by the backend.
+
+Objective answers can be graded automatically when supported by their question
+type. Written responses require staff review where manual grading is applicable.
+
+## Handover documentation
+
+- [Lecturer user guide](docs/user-guide.md): actual navigation and supported workflows.
+- [Developer handover](docs/developer-handover.md): architecture, setup and maintenance.
+- [Production deployment](docs/production-deployment.md): environment, GHCR, migrations and rollback.
+- [Final project handover](docs/final-handover.md): evidence, limitations and ownership decisions.
+
+Assessment Documents provides seven templates, a live Draft Preview and real PDF
+downloads. Preview includes unsaved edits; Download PDF requires relevant sections
+to be saved. General LaTeX / PDF Tools and Exam Builder remain placeholders.
 
 ## Screenshots
 
@@ -67,20 +98,20 @@ SQLAlchemy, Psycopg and Alembic. Passwords use Argon2id hashing.
 
 ## Implemented milestones
 
-| Milestone | Scope |
-| --- | --- |
-| M1 | FastAPI/PostgreSQL foundation, migrations and Question CRUD |
-| M2 | Frontend course and teaching workspace |
-| M3 | Topic hierarchy, response types, skills and structured questions |
-| M4 / M4.1 | Student quizzes, snapshots, results/review and mathematical input |
-| M5 | Authentication, roles, staff management and attempt ownership |
-| M6A / M6B | Progress analytics backend and Student Progress frontend |
-| Design v1 | Shared AXIOM navy, gold/champagne and ivory design |
+| Milestone | Scope                                                                             |
+| --------- | --------------------------------------------------------------------------------- |
+| M1-M2     | Backend foundation, PostgreSQL, Question CRUD and frontend workspace              |
+| M3        | Structured Question Bank, topics, response types and skills                       |
+| M4 / M4.1 | Student quizzes, saved attempts, results and mathematical input                   |
+| M5        | Authentication, roles and access control                                          |
+| M6A / M6B | Student progress analytics and frontend                                           |
+| M7        | Manual grading and local demonstration                                            |
+| M8        | Email verification, account management and email delivery                         |
+| M9        | Assessment configuration, event/room management, LaTeX preview and PDF generation |
 
-See [M5 authentication](docs/milestone-5-authentication.md),
-[M6A analytics](docs/milestone-6a-progress-analytics.md) and
-[M6B frontend](docs/milestone-6b-progress-frontend.md). Earlier milestone documents
-record the project's development history; their historical scope is not the current feature list.
+See the `docs/` directory for milestone architecture, implementation and
+verification notes. Earlier documents preserve the project's development
+history and may describe functionality that was incomplete at that time.
 
 ## Repository structure
 
@@ -139,7 +170,7 @@ See [backend instructions](backend/README.md) and [frontend instructions](fronte
 
 ### Migrations and local accounts
 
-Apply migrations before running the application; current head is `0006`. Tables
+Apply migrations before running the application; current head is `0012`. Tables
 are not created automatically at startup. Inspect schema state with
 `python -m alembic current` and `python -m alembic check` using the backend environment.
 
@@ -169,6 +200,8 @@ From `frontend`:
 ```powershell
 pnpm lint
 pnpm typecheck
+node --test tests/*.test.mjs
+pnpm format:check
 pnpm build
 ```
 
@@ -179,18 +212,43 @@ SameSite protections and CSRF checks for protected mutations. Authorization and
 attempt ownership are enforced by the backend. Environment files and local
 secrets are ignored; examples contain safe defaults and empty password fields.
 
-Public deployment is being prepared, not performed by this repository cleanup.
-Production setup must provide HTTPS, secure cookies, appropriate allowed origins,
-private database credentials and operational backups. The current authentication
-rate limiter is process-local; production hardening remains an explicit deployment
-concern. See the M5 guide for known limitations. Do not publish local database
-exports, demo credentials or personal student data.
+AXIOM has been deployed using the following services:
+
+| Component           | Hosting                   |
+| ------------------- | ------------------------- |
+| Frontend            | Vercel                    |
+| Backend API         | Render                    |
+| PostgreSQL database | Neon                      |
+| Container images    | GitHub Container Registry |
+
+**Production URLs:**
+
+- Frontend: https://axiom-orcin-xi.vercel.app/
+- Backend: https://axiom-api-te6o.onrender.com/
+
+Production configuration requires HTTPS, secure authentication cookies,
+restricted allowed origins, private database credentials and database backups.
+
+The authentication rate limiter is process-local and is not a substitute
+for a distributed production rate-limiting solution.
+
+Do not commit environment secrets, production database exports, demo credentials
+or personal student data.
+
+For deployment changes, verify database migrations, environment configuration,
+backend health and frontend functionality before considering the release complete.
 
 ## Roadmap
 
-Planned, **not implemented**: staff manual grading/review, Exam Builder, Practice
-Sheet Generator, Question Generator, solution/variant generation, LaTeX/PDF tools,
-course material tools and advanced visualizations.
+Potential future improvements include:
+
+- Practice Sheet Generator and Question Generator.
+- Exam Builder, solution/variant generation and general LaTeX/PDF tools beyond the seven assessment documents.
+- Advanced mathematical visualizations and course material tools.
+- Additional operational monitoring and production hardening.
+- Further usability improvements based on lecturer and student feedback.
+
+These are possible future enhancements, not claims of implemented functionality.
 
 ## Author and licensing
 

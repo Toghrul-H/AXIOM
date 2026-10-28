@@ -1,5 +1,7 @@
 # Roadmap
 
+> Historical planning outline, retained for academic traceability. It is not a current delivery schedule. See [final handover](final-handover.md) for implemented scope and remaining optional work.
+
 ## Phase 1
 
 - Planning

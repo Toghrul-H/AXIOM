@@ -1,4 +1,4 @@
-# AXIOM frontend — through Milestone 6
+# AXIOM frontend — through Milestone 9
 
 A local Next.js App Router, TypeScript, and Tailwind CSS interface. No hosting
 provider or external fonts are required. Authentication and quizzes use the local FastAPI backend.
@@ -23,7 +23,7 @@ cd backend
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Apply all Alembic migrations through revision `0006` in the backend before using this frontend.
+Apply all Alembic migrations through revision `0012` in the backend before using this frontend.
 Do not copy its password or environment file into the frontend.
 
 ## API configuration
@@ -44,27 +44,30 @@ The application requires a Node.js server; it is not a static HTML export.
 ```text
 src/
   app/                 App Router pages, shared layout, responsive Tailwind/CSS
-    student/           Dashboard and planned Learn/Practice/Progress pages
-    teacher/           Dashboard and Question Bank/new/edit pages
+    student/           Dashboard, course outline, quizzes, results/review and Progress
+    teacher/           Question Bank, quizzes, grading, staff and assessment documents
   components/          Shell, headings, dashboards, bank, form, edit loader
   lib/
     use-metadata.ts    Database-backed course hierarchy and lookup loading
     questions.ts       Typed FastAPI client and error handling
 ```
 
-| Route                          | Purpose                                                  |
-| ------------------------------ | -------------------------------------------------------- |
-| `/`                            | Sign-in entry; authenticated users reach their role's dashboard |
-| `/login`, `/register`           | Sign in or register a Student account                    |
-| `/student`                     | Student Dashboard with clearly marked demo statistics    |
-| `/student/learn`               | Database-backed course outline; no actual lessons        |
-| `/student/quizzes`             | Available quizzes and signed-in Student's attempt history |
-| `/student/progress`            | Planned-feature placeholder; no tracking                 |
-| `/teacher`                     | Teacher Dashboard with a real three-question API preview |
-| `/teacher/questions`           | Paginated real questions, answers, editing and deletion  |
-| `/teacher/questions/new`       | Create a question                                        |
-| `/teacher/questions/[id]/edit` | Load and update an existing question                     |
-| `/teacher/users`               | Lecturer/Admin account search, promotion and status     |
+| Route                                               | Purpose                                                         |
+| --------------------------------------------------- | --------------------------------------------------------------- |
+| `/`                                                 | Sign-in entry; authenticated users reach their role's dashboard |
+| `/login`, `/register`                               | Sign in or register a Student account                           |
+| `/student`                                          | Student Dashboard using authenticated progress analytics        |
+| `/student/learn`                                    | Database-backed course outline; no actual lessons               |
+| `/student/quizzes`                                  | Available quizzes and signed-in Student's attempt history       |
+| `/student/progress`                                 | Overview, topic/skill performance and recent attempts           |
+| `/teacher`                                          | Staff Dashboard and teaching-resource navigation                |
+| `/teacher/questions`                                | Paginated real questions, answers, editing and deletion         |
+| `/teacher/questions/new`                            | Create a question                                               |
+| `/teacher/questions/[id]/edit`                      | Load and update an existing question                            |
+| `/teacher/users`                                    | Lecturer/Admin account search, promotion and status             |
+| `/teacher/grading`, `/teacher/grading/[id]`         | Staff grading queue and submitted written answers               |
+| `/teacher/assessments`, `/teacher/assessments/[id]` | Lecturer/Admin semester configuration and document editor       |
+| `/verify-email`, `/check-email`                     | Email verification and resend workflow                          |
 
 The reusable `AppShell` provides role-derived navigation, course identity, mobile
 menu, account email and Sign out. `AuthProvider` restores the session after refresh
@@ -84,6 +87,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
+node --test tests/*.test.mjs
 # Run the production build locally instead of the dev server:
 pnpm start
 ```
@@ -96,9 +100,9 @@ See `../docs/milestone-3-verification.md` for the historical M3 browser verifica
 - Dashboard and Progress use authoritative authenticated M6A analytics.
 - Staff routes require authorized roles; student attempts and progress are private.
 - Question Bank uses server-side filters, exact totals and offset/limit pagination (12 per page).
-- Mathematical text uses Unicode/plain text; LaTeX rendering is not implemented.
-- The initial lint toolchain uses ESLint 9 for compatibility with Next's React
-  lint plugins; the registry flags it as deprecated. Lint currently passes.
+- Question/answer text uses Unicode/plain text. Assessment Documents separately renders seven LaTeX templates to Draft Preview and downloadable PDFs.
+- The lint toolchain uses ESLint 9. Review compatibility and security when updating
+  dependencies; historical passing checks are not a substitute for release checks.
 
 Milestone 4 adds the student quiz workflow described below.
 
@@ -164,3 +168,24 @@ dependency or environment variable is required. Startup commands are unchanged.
 The dashboard and `/student/progress` use authenticated M6A analytics. See
 [frontend notes](../docs/milestone-6b-progress-frontend.md) and
 [metric definitions](../docs/milestone-6a-progress-analytics.md).
+
+## M7–M9 and current handover
+
+Manual Grading supports submitted written responses, points and feedback, including
+re-grading. Student results/review expose saved grades; automatic accuracy remains
+separate. Public registration is Student-only at the exact `@inf.elte.hu` domain
+and requires verification before login.
+
+Assessment Documents has seven document tabs and section-specific saves. Draft
+Preview includes unsaved values; Download PDF blocks relevant unsaved edits and
+uses the authenticated binary proxy after saving. It is not a general-purpose
+LaTeX editor. The separate future-tool cards remain placeholders.
+
+Explicit route handlers under `/api/auth`, `/api/users`, `/api/grading/attempts`
+and `/api/assessment-configurations` forward sessions/CSRF without browser-visible
+authentication tokens. `API_BASE_URL` remains a server-side setting; no database
+or email secret belongs in this project. Existing question/quiz/student paths use
+rewrites. Use the [user guide](../docs/user-guide.md),
+[developer guide](../docs/developer-handover.md) and
+[deployment guide](../docs/production-deployment.md) for current procedures;
+earlier milestone sections explain the historical implementation sequence.

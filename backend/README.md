@@ -27,7 +27,7 @@ handle password encoding. The role needs migration privileges.
 
 Swagger: http://127.0.0.1:8000/docs. OpenAPI: `/openapi.json`.
 Tables are created only through Alembic, never on application startup.
-Existing startup commands are unchanged; apply all migrations through revision `0006` before using the API.
+Apply all migrations through current source revision `0012` before using the API.
 
 ## Authentication and permissions
 
@@ -49,15 +49,15 @@ call `/auth/login` to set the cookie; use its `csrf_token` in the documented
 
 ## API
 
-| Endpoint | Behavior |
-| --- | --- |
-| `GET /` | Existing greeting, unchanged |
-| `GET /question-metadata` | Ordered topics, response types, skills, problem sets, suitability tags |
-| `POST /questions` | Create; 201 plus Location header |
-| `GET /questions` | `{items, total, offset, limit}`; ascending ID order |
-| `GET /questions/{id}` | Retrieve; 404 if missing |
-| `PATCH /questions/{id}` | Validated partial update; 404 if missing |
-| `DELETE /questions/{id}` | 204; 404 if missing |
+| Endpoint                     | Behavior                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| `GET /`                      | Existing greeting, unchanged                                                   |
+| `GET /question-metadata`     | Ordered topics, response types, skills, problem sets, suitability tags         |
+| `POST /questions`            | Create; 201 plus Location header                                               |
+| `GET /questions`             | `{items, total, offset, limit}`; ascending ID order                            |
+| `GET /questions/{id}`        | Retrieve; 404 if missing                                                       |
+| `PATCH /questions/{id}`      | Validated partial update; 404 if missing                                       |
+| `DELETE /questions/{id}`     | 204; 404 if missing                                                            |
 | `POST /questions/{id}/check` | Stateless objective answer check and reference solution; no attempts or scores |
 
 This deliberately replaces the previous free-text topic / `question_type` /
@@ -150,7 +150,7 @@ data. Use a reviewed backup restore or a deliberate forward migration instead.
 See [architecture](../docs/milestone-3-architecture.md) and
 [verification](../docs/milestone-3-verification.md) for transformations and results.
 
-Management responses expose answers only to authorized staff. Students use owner-scoped quiz endpoints; solutions become available after submission. Manual grading remains planned.
+Management responses expose answers only to authorized staff. Students use owner-scoped quiz endpoints; solutions become available after submission. Manual grading is implemented for submitted FREE_RESPONSE answers through `/grading/attempts`.
 
 ## Milestone 4 — student quizzes
 
@@ -165,9 +165,8 @@ replaces the former `X-Development-Session` UUID with authenticated User ownersh
 that header no longer grants access. Sign in and supply CSRF for mutations.
 Active response schemas exclude answers/solutions. Only a successful final submission
 unlocks review. Attempts use immutable question/option snapshots and reuse the existing
-objective checker; written responses remain ungraded. The opt-in PostgreSQL suite
+objective checker; written responses remain ungraded until staff save a manual grade. The opt-in PostgreSQL suite
 now includes these quiz tests and concurrent final-submission checks.
-
 
 ## Milestone 4.1 — topic context
 
@@ -175,3 +174,27 @@ Apply `alembic upgrade head` for revision `0004`, which adds a nullable snapshot
 slug for contextual mathematical input. Existing answers and grading are unchanged;
 old snapshots retain null and use the frontend fallback. See
 [Milestone 4.1](../docs/milestone-4.1-math-input.md).
+
+## Current M6–M9 functionality and handover
+
+Public registration requires an exact `@inf.elte.hu` address and email verification.
+Production supports Brevo HTTPS delivery; SMTP remains optional for local use.
+Progress is owner-scoped at `/student/progress/me`; manual grades do not change
+auto-graded practice accuracy. Staff grading uses `/grading/attempts` and requires
+Demonstrator/Lecturer/Admin. Assessment configuration CRUD, draft preview, LaTeX
+source and PDF endpoints live under `/assessment-configurations` and require
+Lecturer/Admin. Swagger provides the current request/response contracts.
+
+For protected operator provisioning use `python -m app.scripts.system_accounts create-admin`
+(first Admin) or `python -m app.scripts.system_accounts create-system-admin` (explicit additional Admin).
+The legacy first-Admin bootstrap above remains available. Protected accounts are
+not editable through Staff Management.
+
+PDF generation is disabled by default in a local Python process. The production
+Dockerfile uses native Tectonic with an offline cache, one worker and bounded
+temporary compilation; local Docker mode requires the pinned POC image. No image
+or credential is automatically fetched at application startup. See the
+[developer guide](../docs/developer-handover.md) and
+[deployment guide](../docs/production-deployment.md) for configuration and artifact
+handover requirements. Historical milestone sections above are contextual, not
+instructions to stop migrations at an earlier revision.

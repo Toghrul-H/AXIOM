@@ -1,5 +1,7 @@
 # M9D.2B — Assessment PDF downloads
 
+> Historical implementation record. The subsequent saved-only UX change blocks Download PDF while relevant edits are unsaved; Draft Preview still includes them. Use the [current user guide](user-guide.md) and [production deployment guide](production-deployment.md) for handover procedures. Resource measurements below describe the original local test, not current production state.
+
 The editor's Download PDF action submits the same unsaved form snapshot used by Draft Preview to `POST /assessment-configurations/{id}/documents/{document_type}/pdf`. All seven existing templates remain authoritative and unchanged. This operation does not save configuration records. Lecturer/Admin authorization and session CSRF checks apply. The response is an attachment with `application/pdf` and `Cache-Control: no-store`; the same-origin proxy forwards the binary body and filename.
 
 ## Local Windows setup
