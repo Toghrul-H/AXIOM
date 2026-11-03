@@ -20,9 +20,9 @@ from app.importers.dmi_verified import (
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch", choices=sorted(BATCHES), default="m10a3", help="Closed reviewed batch identifier (default: m10a3).")
-    parser.add_argument("--dataset", type=Path, required=True, help="Batch ready JSON (M10A.3 ready-for-m10b.json or M10C m10c-import-ready.json).")
-    parser.add_argument("--canonical-solutions", type=Path, help="M10A.3 canonical solutions, or M10C recovered-question-master.json.")
-    parser.add_argument("--verification-evidence", type=Path, help="M10A.3 verification evidence, or M10C solution-verification.json.")
+    parser.add_argument("--dataset", type=Path, required=True, help="Closed-batch ready JSON (M10A.3, M10C, or M10E).")
+    parser.add_argument("--canonical-solutions", type=Path, help="M10A.3 canonical solutions, or an M10C/M10E recovery master.")
+    parser.add_argument("--verification-evidence", type=Path, help="M10A.3 verification evidence, M10C solution verification, or M10E verification evidence.")
     parser.add_argument("--grading-configurations", type=Path)
     parser.add_argument("--apply", action="store_true", help="Write only after explicit local-development safety checks. Defaults to dry-run.")
     args = parser.parse_args()

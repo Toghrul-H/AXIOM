@@ -3,7 +3,8 @@
 The importer is a private, explicit command for closed reviewed batches. It is
 never invoked at startup, by Alembic, or through an HTTP endpoint. M10B defined
 the 23-record M10A.3 batch; M10D added the separately validated 14-record M10C
-batch. Original course PDFs are never copied into the repository.
+batch; M10F adds the separately validated 15-record M10E batch. Original course
+PDFs are never copied into the repository.
 
 ## Preconditions
 
@@ -11,7 +12,9 @@ Apply revision `0013` with the normal migration process. Each closed batch has
 an explicit code-reviewed ID allow-list, expected count, topic/skill mapping,
 and evidence adapter. M10A.3 cross-validates its four analysis artifacts; M10C
 cross-validates its import-ready JSON, recovered master, deterministic solution
-verification, and external source-page evidence. Both currently require
+verification, and external source-page evidence; M10E additionally requires a
+source-verified transcription, original exercise number, and exact staged
+metadata match. All batches currently require
 `FREE_RESPONSE` and manual grading. The target must be PostgreSQL on
 `localhost`, `127.0.0.1`, or `::1`, with database name `dmi_platform`; hosted
 targets are refused.
@@ -35,6 +38,12 @@ M10C requires explicit batch selection:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.scripts.import_verified_dmi --batch m10c --dataset "C:\Users\Toghrul\Desktop\dmi-analysis\m10c-recovery\m10c-import-ready.json"
+```
+
+M10E requires explicit batch selection and its two cross-check artifacts:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.scripts.import_verified_dmi --batch m10e --dataset "C:\Users\Toghrul\Desktop\dmi-analysis\m10e-recovery\m10e-import-ready.json" --canonical-solutions "C:\Users\Toghrul\Desktop\dmi-analysis\m10e-recovery\recovery-master.json" --verification-evidence "C:\Users\Toghrul\Desktop\dmi-analysis\m10e-recovery\verification-evidence.json"
 ```
 
 Run the same `--apply` command again to verify idempotency; matching records

@@ -22,9 +22,12 @@ from app.importers.dmi_verified import (
     ImportItem,
     M10C_IDS,
     M10C_METADATA,
+    M10E_IDS,
+    M10E_METADATA,
     import_items,
     load_import_batch,
     load_m10c_dataset,
+    load_m10e_dataset,
     load_verified_dataset,
 )
 from app.models import Question, Topic
@@ -93,6 +96,49 @@ def m10c_bundle(tmp_path: Path, mutate=None):
     return paths
 
 
+def m10e_bundle(tmp_path: Path, mutate=None):
+    names = {"binary-relations": "Binary Relations", "complex-numbers": "Complex Numbers", "combinatorics": "Combinatorics", "functions": "Functions", "sets": "Sets"}
+    records = []
+    verification = []
+    ready_items = []
+    evidence_dir = tmp_path / "source-page-evidence"
+    evidence_dir.mkdir()
+    for index, question_id in enumerate(sorted(M10E_IDS), start=1):
+        topic_slug, difficulty, skill_type = M10E_METADATA[question_id]
+        relative_evidence = f"source-page-evidence/{question_id}.png"
+        (evidence_dir / f"{question_id}.png").write_bytes(b"test evidence")
+        statement = f"M10E recovered statement {question_id}."
+        answer = f"M10E verified answer {question_id}."
+        solution = f"M10E worked solution {question_id}."
+        source = f"Source.pdf p.{index} q.1"
+        records.append({
+            "stable_question_id": question_id, "external_source_id": f"M10A3:{question_id}",
+            "original_source_path": "Source.pdf", "source_page": index, "original_question_number": "1",
+            "source_reference": source, "source_page_evidence": relative_evidence,
+            "transcription_status": "source_verified", "primary_topic": names[topic_slug],
+            "corrected_mathematical_statement": statement, "final_answer": answer,
+            "worked_solution": solution, "solution_status": "verified_derived_solution",
+            "remaining_uncertainties": None,
+        })
+        verification.append({"stable_question_id": question_id, "solution_status": "verified_derived_solution", "method": "local enumeration", "evidence": "Independent test evidence.", "computed": {"check": index}})
+        ready_items.append({
+            "stable_question_id": question_id, "external_source_id": f"M10A3:{question_id}",
+            "title": f"Recovered {names[topic_slug]} question", "source_reference": source,
+            "question_text": statement, "expected_answer": answer, "explanation": solution,
+            "response_type": "FREE_RESPONSE",
+            "metadata_for_m10f": {"topic_slug": topic_slug, "difficulty": difficulty, "skill_type": skill_type},
+        })
+    ready = {"candidate_count": len(ready_items), "items": ready_items}
+    master = {"record_count": len(records), "records": records}
+    verified = {"verified_count": len(verification), "records": verification}
+    if mutate:
+        mutate(ready, master, verified)
+    paths = {"ready": tmp_path / "m10e-import-ready.json", "master": tmp_path / "recovery-master.json", "evidence": tmp_path / "verification-evidence.json"}
+    for key, data in (("ready", ready), ("master", master), ("evidence", verified)):
+        paths[key].write_text(json.dumps(data), encoding="utf-8")
+    return paths
+
+
 def test_valid_dataset_is_cross_validated(tmp_path):
     paths, expected, metadata = bundle(tmp_path)
     items = load(paths, expected, metadata)
@@ -140,6 +186,16 @@ def test_m10c_batch_is_cross_validated_and_registry_is_closed(tmp_path):
         load_import_batch("unknown", paths["ready"])
 
 
+def test_m10e_batch_is_cross_validated_and_registry_is_closed(tmp_path):
+    paths = m10e_bundle(tmp_path)
+    items = load_m10e_dataset(paths["ready"], paths["master"], paths["evidence"])
+    assert len(items) == 15
+    assert {item.canonical_id for item in items} == M10E_IDS
+    assert {item.external_source_id for item in items} == {f"M10A3:{question_id}" for question_id in M10E_IDS}
+    assert {name: BATCHES[name].expected_count for name in ("m10a3", "m10c", "m10e")} == {"m10a3": 23, "m10c": 14, "m10e": 15}
+    assert load_import_batch("m10e", paths["ready"], paths["master"], paths["evidence"]) == items
+
+
 @pytest.mark.parametrize("mutate", [
     lambda ready, master, verified: verified["records"][0].pop("computed"),
     lambda ready, master, verified: verified["records"][0].update(solution_status="generated_needs_review"),
@@ -155,6 +211,26 @@ def test_m10c_missing_evidence_invalid_status_response_or_duplicate_is_rejected(
         paths["ready"].write_text(json.dumps(ready), encoding="utf-8")
     with pytest.raises(DatasetValidationError):
         load_m10c_dataset(paths["ready"], paths["master"], paths["evidence"])
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda ready, master, verified: verified["records"][0].pop("computed"),
+    lambda ready, master, verified: verified["records"][0].pop("evidence"),
+    lambda ready, master, verified: verified["records"][0].update(solution_status="generated_needs_review"),
+    lambda ready, master, verified: ready["items"][0].update(response_type="SINGLE_CHOICE"),
+    lambda ready, master, verified: ready["items"][0]["metadata_for_m10f"].update(topic_slug="logic"),
+    lambda ready, master, verified: master["records"][0].update(source_reference="Different.pdf p.1 q.1"),
+    lambda ready, master, verified: master["records"][0].update(source_page_evidence="missing.png"),
+    lambda ready, master, verified: master["records"][0].update(worked_solution=""),
+    lambda ready, master, verified: ready["items"].append(dict(ready["items"][0])),
+])
+def test_m10e_evidence_and_cross_artifact_failures_are_rejected(tmp_path, mutate):
+    paths = m10e_bundle(tmp_path, mutate)
+    ready = json.loads(paths["ready"].read_text(encoding="utf-8"))
+    ready["candidate_count"] = len(ready["items"])
+    paths["ready"].write_text(json.dumps(ready), encoding="utf-8")
+    with pytest.raises(DatasetValidationError):
+        load_m10e_dataset(paths["ready"], paths["master"], paths["evidence"])
 
 
 def integration_item(external_id: str) -> ImportItem:
@@ -248,6 +324,34 @@ def test_m10c_batch_is_atomic_idempotent_and_preserves_existing_records(isolated
     assert session.get(User, user_id).email == user.email
     again = import_items(session, items, dataset="m10c-test", dry_run=False)
     assert again.created == 0 and again.skipped == 14 and not again.conflicts and not again.rejected
+
+
+@pytest.mark.skipif(os.getenv("RUN_POSTGRES_TESTS") != "1", reason="requires local PostgreSQL")
+def test_m10e_batch_is_atomic_idempotent_and_preserves_existing_records(isolated_import_session, tmp_path):
+    session = isolated_import_session
+    paths = m10e_bundle(tmp_path)
+    items = load_m10e_dataset(paths["ready"], paths["master"], paths["evidence"])
+    topic_id = session.scalar(select(Topic.id).where(Topic.slug == "sets"))
+    assert topic_id is not None
+    existing = Question(topic_id=topic_id, title="Existing fixture", difficulty="easy", response_type="FREE_RESPONSE", skill_type="DEFINITION", question_text="Existing question", expected_answer="Existing answer", explanation="Existing explanation", is_active=True)
+    user = User(email=f"preserved-m10e-{uuid4().hex}@example.test", password_hash="unchanged", role="STUDENT")
+    session.add_all((existing, user)); session.commit()
+    existing_id, user_id = existing.id, user.id
+
+    dry = import_items(session, items, dataset="m10e-test", dry_run=True)
+    assert dry.created == 15 and dry.skipped == 0 and not dry.conflicts and not dry.rejected
+    assert session.get(Question, existing_id).question_text == "Existing question"
+    assert session.get(User, user_id).email == user.email
+
+    applied = import_items(session, items, dataset="m10e-test", dry_run=False)
+    assert applied.created == 15 and applied.skipped == 0
+    persisted = list(session.scalars(select(Question).where(Question.external_source_id.in_([item.external_source_id for item in items]))))
+    assert len(persisted) == 15
+    assert all(question.response_type == "FREE_RESPONSE" and question.expected_answer and question.explanation for question in persisted)
+    assert session.get(Question, existing_id).question_text == "Existing question"
+    assert session.get(User, user_id).email == user.email
+    again = import_items(session, items, dataset="m10e-test", dry_run=False)
+    assert again.created == 0 and again.skipped == 15 and not again.conflicts and not again.rejected
 
 
 @pytest.mark.skipif(os.getenv("RUN_POSTGRES_TESTS") != "1", reason="requires local PostgreSQL")
