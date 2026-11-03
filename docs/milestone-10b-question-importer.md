@@ -1,18 +1,20 @@
-# M10B — Verified DMI Question Importer
+# M10B/M10D — Verified DMI Question Importer
 
-The M10B importer is a private, explicit command for the 23 M10A.3 records in
-`ready-for-m10b.json`. It is never invoked at startup, by Alembic, or through
-an HTTP endpoint. It reads the M10A.3 JSON files in their external analysis
-directory; original course PDFs and the 102 blocked records are not copied into
-the repository or imported.
+The importer is a private, explicit command for closed reviewed batches. It is
+never invoked at startup, by Alembic, or through an HTTP endpoint. M10B defined
+the 23-record M10A.3 batch; M10D added the separately validated 14-record M10C
+batch. Original course PDFs are never copied into the repository.
 
 ## Preconditions
 
-Apply revision `0013` with the normal migration process. The importer checks
-the full M10A.3 allow-list, cross-validates answers, worked solutions,
-verification evidence, and grading configurations, and requires all 23 to be
-`FREE_RESPONSE`. The target must be PostgreSQL on `localhost`, `127.0.0.1`, or
-`::1`, with database name `dmi_platform`; hosted targets are refused.
+Apply revision `0013` with the normal migration process. Each closed batch has
+an explicit code-reviewed ID allow-list, expected count, topic/skill mapping,
+and evidence adapter. M10A.3 cross-validates its four analysis artifacts; M10C
+cross-validates its import-ready JSON, recovered master, deterministic solution
+verification, and external source-page evidence. Both currently require
+`FREE_RESPONSE` and manual grading. The target must be PostgreSQL on
+`localhost`, `127.0.0.1`, or `::1`, with database name `dmi_platform`; hosted
+targets are refused.
 
 Run from `backend/`:
 
@@ -27,6 +29,12 @@ apply it:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.scripts.import_verified_dmi --dataset "C:\Users\Toghrul\Desktop\dmi-analysis\m10a3-solutions\ready-for-m10b.json" --apply
+```
+
+M10C requires explicit batch selection:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.scripts.import_verified_dmi --batch m10c --dataset "C:\Users\Toghrul\Desktop\dmi-analysis\m10c-recovery\m10c-import-ready.json"
 ```
 
 Run the same `--apply` command again to verify idempotency; matching records
@@ -95,7 +103,7 @@ or browser-based manual verification.
 
 ## Future batches
 
-Do not modify the allow-list casually. A new batch needs separately reviewed
-canonical IDs, cross-validated solution/evidence/grading artifacts, deliberate
-topic/skill/difficulty mappings, focused tests, and a new explicit importer
-configuration or revision. Never use this command for a hosted database.
+Do not modify an allow-list casually. A new batch needs separately reviewed
+canonical IDs, cross-validated source/solution/evidence artifacts, deliberate
+topic/skill/difficulty mappings, focused tests, and a new explicit registry
+entry plus evidence adapter. Never use this command for a hosted database.

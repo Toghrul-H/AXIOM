@@ -1,4 +1,4 @@
-"""Validated, atomic M10A.3 DMI-question import support.
+"""Validated, atomic import support for explicitly reviewed DMI batches.
 
 This module deliberately has no route or startup hook.  The CLI is the only
 entry point for importing an external, reviewed dataset.
@@ -62,6 +62,54 @@ IMPORT_METADATA: dict[str, tuple[str, str, str]] = {
     "M10A-59dd439ae88f": ("binary-relations", "medium", "CALCULATION"),
     "M10A-9991c3f0250c": ("binary-relations", "medium", "PROOF"),
     "M10A-07ae62ed1f9d": ("binary-relations", "medium", "CALCULATION"),
+}
+
+M10C_IDS = frozenset({
+    "M10A-76335ef0a375", "M10A-89011c1f9e9e", "M10A-efe0d2ab9c42",
+    "M10A-11d3c55b46c1", "M10A-863760d87ae5", "M10A-b4d38cb8329a",
+    "M10A-bde9ac0520cc", "M10A-7aafd52c6d82", "M10A-e985b4c645fc",
+    "M10A-419d232d2121", "M10A-57460f790ec2", "M10A-90a264b4e583",
+    "M10A-a3ea409068d5", "M10A-ddf8054f0cc3",
+})
+
+# These classifications are a reviewed part of the batch definition, never
+# inferred from a submitted JSON document at import time.
+M10C_METADATA: dict[str, tuple[str, str, str]] = {
+    "M10A-76335ef0a375": ("binary-relations", "hard", "APPLICATION"),
+    "M10A-89011c1f9e9e": ("binary-relations", "hard", "CLASSIFICATION"),
+    "M10A-efe0d2ab9c42": ("complex-numbers", "hard", "CALCULATION"),
+    "M10A-11d3c55b46c1": ("combinatorics", "hard", "CALCULATION"),
+    "M10A-863760d87ae5": ("combinatorics", "medium", "CALCULATION"),
+    "M10A-b4d38cb8329a": ("combinatorics", "medium", "CALCULATION"),
+    "M10A-bde9ac0520cc": ("combinatorics", "medium", "CALCULATION"),
+    "M10A-7aafd52c6d82": ("combinatorics", "hard", "CALCULATION"),
+    "M10A-e985b4c645fc": ("combinatorics", "hard", "CALCULATION"),
+    "M10A-419d232d2121": ("combinatorics", "hard", "CALCULATION"),
+    "M10A-57460f790ec2": ("combinatorics", "medium", "CALCULATION"),
+    "M10A-90a264b4e583": ("combinatorics", "medium", "CALCULATION"),
+    "M10A-a3ea409068d5": ("combinatorics", "medium", "CALCULATION"),
+    "M10A-ddf8054f0cc3": ("combinatorics", "hard", "CALCULATION"),
+}
+
+
+@dataclass(frozen=True)
+class BatchSpec:
+    identifier: str
+    allowed_ids: frozenset[str]
+    expected_count: int
+    metadata: dict[str, tuple[str, str, str]]
+    required_artifacts: tuple[str, ...]
+
+
+BATCHES: dict[str, BatchSpec] = {
+    "m10a3": BatchSpec(
+        "m10a3", READY_IDS, 23, IMPORT_METADATA,
+        ("ready-for-m10b.json", "canonical-solutions.json", "verification-evidence.json", "grading-configurations.json"),
+    ),
+    "m10c": BatchSpec(
+        "m10c", M10C_IDS, 14, M10C_METADATA,
+        ("m10c-import-ready.json", "recovered-question-master.json", "solution-verification.json"),
+    ),
 }
 
 
@@ -204,6 +252,110 @@ def load_verified_dataset(
             difficulty=difficulty, skill_type=skill_type,
         ))
     return sorted(imported, key=lambda item: item.canonical_id)
+
+
+TOPIC_NAMES = {
+    "Binary Relations": "binary-relations",
+    "Complex Numbers": "complex-numbers",
+    "Combinatorics": "combinatorics",
+}
+
+
+def load_m10c_dataset(
+    dataset_path: Path,
+    master_path: Path | None = None,
+    verification_path: Path | None = None,
+    *,
+    expected_ids: frozenset[str] = M10C_IDS,
+    metadata: dict[str, tuple[str, str, str]] | None = None,
+    expected_count: int = 14,
+) -> list[ImportItem]:
+    """Validate the M10C recovery/evidence adapter before any database access."""
+    dataset_path = dataset_path.resolve()
+    root = dataset_path.parent
+    ready = _read_json(dataset_path)
+    master = _read_json(master_path or root / "recovered-question-master.json")
+    verification = _read_json(verification_path or root / "solution-verification.json")
+    candidates = ready.get("items")
+    if not isinstance(candidates, list) or ready.get("candidate_count") != len(candidates):
+        raise DatasetValidationError("m10c-import-ready candidate_count/items are inconsistent")
+    ready_by_id = _index(candidates, "stable_question_id", "m10c-import-ready")
+    if frozenset(ready_by_id) != expected_ids or len(ready_by_id) != expected_count:
+        raise DatasetValidationError("M10C canonical IDs do not exactly match the approved batch allow-list")
+    if master.get("record_count") != len(master.get("records", [])):
+        raise DatasetValidationError("M10C recovered-question-master record_count/records are inconsistent")
+    master_by_id = _index(master.get("records"), "stable_question_id", "recovered-question-master")
+    verification_by_id = _index(verification.get("records"), "stable_question_id", "solution-verification")
+    metadata = metadata or M10C_METADATA
+    if set(metadata) != expected_ids:
+        raise RuntimeError("M10C importer metadata does not cover the approved allow-list")
+
+    imported: list[ImportItem] = []
+    for question_id, ready_record in ready_by_id.items():
+        if not CANONICAL_ID.fullmatch(question_id):
+            raise DatasetValidationError(f"Invalid canonical ID: {question_id}")
+        master_record = master_by_id.get(question_id)
+        evidence_record = verification_by_id.get(question_id)
+        if master_record is None or evidence_record is None:
+            raise DatasetValidationError(f"{question_id}: missing M10C master/evidence record")
+        if master_record.get("solution_status") != "verified_derived_solution" or evidence_record.get("solution_status") != "verified_derived_solution":
+            raise DatasetValidationError(f"{question_id}: solution verification is insufficient")
+        if master_record.get("remaining_uncertainties") is not None:
+            raise DatasetValidationError(f"{question_id}: unresolved critical source uncertainty")
+        source_path = _text(master_record, "original_source_path", question_id)
+        page = master_record.get("source_page")
+        source_evidence = _text(master_record, "source_page_evidence", question_id)
+        if not isinstance(page, int) or page < 1 or not (root / source_evidence).is_file():
+            raise DatasetValidationError(f"{question_id}: source-page evidence is missing")
+        if not _text(evidence_record, "method", question_id) or not _text(evidence_record, "evidence", question_id):
+            raise DatasetValidationError(f"{question_id}: independent verification evidence is missing")
+        if not isinstance(evidence_record.get("computed"), dict) or not evidence_record["computed"]:
+            raise DatasetValidationError(f"{question_id}: independent computed verification is missing")
+        source_reference = _text(ready_record, "source_reference", question_id)
+        if source_reference != _text(master_record, "source_reference", question_id):
+            raise DatasetValidationError(f"{question_id}: source provenance differs between M10C artifacts")
+        if _text(ready_record, "external_source_id", question_id) != f"{EXTERNAL_NAMESPACE}{question_id}":
+            raise DatasetValidationError(f"{question_id}: external source identifier is invalid")
+        question_text = _text(ready_record, "question_text", question_id)
+        answer = _text(ready_record, "expected_answer", question_id)
+        explanation = _text(ready_record, "explanation", question_id)
+        if question_text != _text(master_record, "corrected_mathematical_statement", question_id):
+            raise DatasetValidationError(f"{question_id}: question wording differs from source reconstruction")
+        if answer != _text(master_record, "final_answer", question_id) or explanation != _text(master_record, "worked_solution", question_id):
+            raise DatasetValidationError(f"{question_id}: answer or worked solution differs from M10C master")
+        if ready_record.get("response_type") != "FREE_RESPONSE":
+            raise DatasetValidationError(f"{question_id}: unsupported response type")
+        topic_slug, difficulty, skill_type = metadata[question_id]
+        if TOPIC_NAMES.get(master_record.get("primary_topic")) != topic_slug:
+            raise DatasetValidationError(f"{question_id}: reviewed topic mapping is inconsistent")
+        # Keep source_path live in the validation flow rather than trusting a
+        # filename embedded in a prose reference alone.
+        if not source_path:
+            raise DatasetValidationError(f"{question_id}: original source path is missing")
+        imported.append(ImportItem(
+            canonical_id=question_id, title=_text(ready_record, "title", question_id),
+            source_reference=source_reference, question_text=question_text,
+            expected_answer=answer, explanation=explanation, topic_slug=topic_slug,
+            difficulty=difficulty, skill_type=skill_type,
+        ))
+    return sorted(imported, key=lambda item: item.canonical_id)
+
+
+def load_import_batch(
+    batch: str,
+    dataset_path: Path,
+    canonical_path: Path | None = None,
+    evidence_path: Path | None = None,
+    grading_path: Path | None = None,
+) -> list[ImportItem]:
+    """Load one of the closed, reviewed batches; unknown batches are refused."""
+    if batch not in BATCHES:
+        raise DatasetValidationError(f"Unknown import batch: {batch!r}")
+    if batch == "m10a3":
+        return load_verified_dataset(dataset_path, canonical_path, evidence_path, grading_path)
+    if grading_path is not None:
+        raise DatasetValidationError("M10C does not accept a grading-configurations override")
+    return load_m10c_dataset(dataset_path, canonical_path, evidence_path)
 
 
 def assert_local_development_engine(engine: Engine) -> None:
