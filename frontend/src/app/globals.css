@@ -611,6 +611,10 @@ h1 {
   color: #203858;
   letter-spacing: 1.2px;
 }
+
+.math-text {
+  white-space: pre-wrap;
+}
 .section-heading {
   display: flex;
   align-items: center;

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { quizzesApi, Review, ReviewItem } from "@/lib/quizzes";
 import { PageHeading } from "./page-heading";
 import { ManualGradeFeedback } from "./manual-grade-feedback";
+import { MathText } from "./math-text";
 export function QuizResults({
   id,
   allAnswers = false,
@@ -106,17 +107,27 @@ export function QuizResults({
                       ? "Correct"
                       : "Incorrect"}
               </p>
-              <h2>{item.question_text}</h2>
+              <h2>
+                <MathText text={item.question_text} />
+              </h2>
               <h3>Your answer</h3>
-              <p>{submittedText(item)}</p>
+              <p>
+                <MathText text={submittedText(item)} />
+              </p>
               <h3>
                 {item.auto_gradable ? "Correct answer" : "Reference answer"}
               </h3>
-              <p>{correctText(item)}</p>
+              <p>
+                <MathText text={correctText(item)} />
+              </p>
               <h3>Explanation / full solution</h3>
               <p>
-                {item.explanation ??
-                  "No explanation has been supplied for this question."}
+                <MathText
+                  text={
+                    item.explanation ??
+                    "No explanation has been supplied for this question."
+                  }
+                />
               </p>
               {item.auto_gradable && (
                 <p>
@@ -133,7 +144,8 @@ export function QuizResults({
 }
 function submittedText(i: ReviewItem) {
   if (!i.answered) return "Not answered";
-  if (i.response_type === "FREE_RESPONSE") return i.free_response;
+  if (i.response_type === "FREE_RESPONSE")
+    return i.free_response ?? "Not answered";
   if (i.response_type === "TRUE_FALSE")
     return i.boolean_answer ? "True" : "False";
   return i.options

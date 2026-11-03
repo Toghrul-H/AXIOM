@@ -23,6 +23,7 @@ import {
 import { orderedTopics, useMetadata } from "@/lib/use-metadata";
 import { QuestionFilters } from "./question-filters";
 import { PageHeading } from "./page-heading";
+import { MathText } from "./math-text";
 
 const PAGE_SIZE = 12;
 
@@ -268,7 +269,9 @@ export function QuestionBank() {
                         {question.title && (
                           <p className="question-title">{question.title}</p>
                         )}
-                        <h2>{question.question_text}</h2>
+                        <h2>
+                          <MathText text={question.question_text} />
+                        </h2>
                         <div className="association-tags">
                           {question.problem_sets.map((p) => (
                             <span key={p.id}>{p.code}</span>
@@ -298,7 +301,9 @@ export function QuestionBank() {
                             {question.response_type === "FREE_RESPONSE" ? (
                               <>
                                 <p className="answer-text">
-                                  {question.expected_answer}
+                                  <MathText
+                                    text={question.expected_answer ?? ""}
+                                  />
                                 </p>
                                 <p className="field-hint">
                                   Reference only · not automatically graded
@@ -320,7 +325,9 @@ export function QuestionBank() {
                             {question.explanation && (
                               <>
                                 <p className="eyebrow">EXPLANATION</p>
-                                <p>{question.explanation}</p>
+                                <p>
+                                  <MathText text={question.explanation} />
+                                </p>
                               </>
                             )}
                           </div>

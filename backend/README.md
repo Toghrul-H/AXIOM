@@ -27,7 +27,7 @@ handle password encoding. The role needs migration privileges.
 
 Swagger: http://127.0.0.1:8000/docs. OpenAPI: `/openapi.json`.
 Tables are created only through Alembic, never on application startup.
-Apply all migrations through current source revision `0012` before using the API.
+Apply all migrations through current source revision `0013` before using the API.
 
 ## Authentication and permissions
 

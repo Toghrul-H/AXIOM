@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth-provider";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./question-bank.css";
 import "./quizzes.css";

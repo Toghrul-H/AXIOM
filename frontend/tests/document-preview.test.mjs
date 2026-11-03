@@ -305,15 +305,15 @@ test('PDF guard compares values, allows reverts, and checks only relevant sectio
     values: sample.values,
     querySelector: () => null,
   }));
-  const module = load('lib/document-preview.ts', {'./assessments': assessments}, {
+  const loadedModule = load('lib/document-preview.ts', {'./assessments': assessments}, {
     FormData: class { constructor(form) { return form.values; } },
   });
   const editor = {querySelectorAll: () => forms};
-  const dirty = () => module.hasUnsavedDocumentChanges(editor, 'ENDTERM_TEST_INFORMATION');
+  const dirty = () => loadedModule.hasUnsavedDocumentChanges(editor, 'ENDTERM_TEST_INFORMATION');
   assert.equal(dirty(), false);
   forms[1].values.set('venue', 'Edited');
   assert.equal(dirty(), true);
-  assert.equal(module.hasUnsavedDocumentChanges(editor, 'MIDTERM_TEST_INFORMATION'), false);
+  assert.equal(loadedModule.hasUnsavedDocumentChanges(editor, 'MIDTERM_TEST_INFORMATION'), false);
   forms[1].values.set('venue', 'Unsaved room');
   assert.equal(dirty(), false);
   forms[1].querySelector = () => ({});
@@ -323,13 +323,13 @@ test('PDF guard compares values, allows reverts, and checks only relevant sectio
 test('Download PDF with unsaved values shows exact error without requesting or saving', async () => {
   let index = 0, calls = 0;
   const updates = [];
-  const module = load('components/document-preview.tsx', {
+  const loadedModule = load('components/document-preview.tsx', {
     'react/jsx-runtime': jsx,
     react: {useEffect:()=>{},useRef:initial=>({current:index++===0?{}:initial}),useState:initial=>[initial,value=>updates.push(value)]},
     '@/lib/document-preview': {...preview, hasUnsavedDocumentChanges:()=>true, snapshotEditor:()=>{throw Error('Must not snapshot/download');}},
     '@/lib/assessment-pdf': {downloadAssessmentPdf:()=>{calls++;}},
   });
-  const tree = module.DocumentWorkspace({id:'1',children:()=>null});
+  const tree = loadedModule.DocumentWorkspace({id:'1',children:()=>null});
   await nodes(tree).find(n=>n.type==='button' && n.props.children==='Download PDF').props.onClick();
   assert.equal(calls,0);
   assert.deepEqual(updates,['You have unsaved changes. Please save your changes before downloading the PDF.']);

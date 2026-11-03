@@ -6,6 +6,7 @@ import { Answer, Attempt, AttemptItem, quizzesApi } from "@/lib/quizzes";
 import { PageHeading } from "./page-heading";
 import { MathAnswerInput } from "./math-answer-input";
 import { mathProfileForTopic } from "@/lib/math-symbols";
+import { MathText } from "./math-text";
 const emptyAnswer: Answer = {
   selected_option_ids: [],
   boolean_answer: null,
@@ -212,7 +213,9 @@ function QuizRunner({ initial }: { initial: Attempt }) {
             ? "Written response · not automatically graded"
             : `${item.points} objective point${item.points === 1 ? "" : "s"}`}
         </p>
-        <h2 className="quiz-question">{item.question_text}</h2>
+        <h2 className="quiz-question">
+          <MathText text={item.question_text} />
+        </h2>
         <fieldset disabled={busy}>
           <legend className="sr-only">Your answer</legend>
           <AnswerEditor item={item} value={draft} onChange={change} />

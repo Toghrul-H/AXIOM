@@ -60,6 +60,7 @@ class AssessmentSuitability(Base):
 class Question(Base):
     __tablename__ = "questions"
     __table_args__ = (
+        UniqueConstraint("external_source_id", name="uq_questions_external_source_id"),
         CheckConstraint("difficulty IN ('easy', 'medium', 'hard')", name="ck_questions_difficulty"),
         CheckConstraint(
             "(response_type = 'FREE_RESPONSE' AND expected_answer IS NOT NULL AND correct_boolean IS NULL) OR "
@@ -69,6 +70,10 @@ class Question(Base):
         ),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Private import identity and provenance; normal staff APIs continue to use
+    # the internal integer id and do not expose importer bookkeeping.
+    external_source_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    source_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
     topic_id: Mapped[int] = mapped_column(ForeignKey("topics.id", ondelete="RESTRICT"), index=True)
     title: Mapped[str | None] = mapped_column(String(200))
     difficulty: Mapped[str] = mapped_column(String(10), index=True)

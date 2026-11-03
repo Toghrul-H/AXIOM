@@ -78,7 +78,7 @@ test('save baseline advances only after success and failed saves preserve it', a
   const preview = load('src/lib/document-preview.ts', {'./assessments': lib()});
   const values = form({venue:'New hall'});
   const element = {dataset:{savedValues:preview.formValues(form({venue:'Old hall'}))}, values};
-  const module = load('src/components/assessment-editor.tsx', {
+  const loadedModule = load('src/components/assessment-editor.tsx', {
     'react/jsx-runtime':jsx,
     react:{useEffect:()=>{},useRef:initial=>({current:initial}),useState:initial=>[initial,()=>{}]},
     '@/lib/document-preview':preview,
@@ -87,7 +87,7 @@ test('save baseline advances only after success and failed saves preserve it', a
   // Node FormData cannot clone directly; provide the browser-form equivalent.
   let resolve, reject;
   const pendingSave = () => new Promise((ok, fail) => {resolve=ok;reject=fail;});
-  const tree = module.EditForm({children:null,label:'event',save:pendingSave});
+  const tree = loadedModule.EditForm({children:null,label:'event',save:pendingSave});
   const original = element.dataset.savedValues;
   const request = tree.props.onSubmit({preventDefault(){},currentTarget:element});
   reject(Error('Server rejected save'));

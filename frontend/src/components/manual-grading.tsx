@@ -8,6 +8,7 @@ import {
   type GradedItem,
 } from "@/lib/manual-grading";
 import { PageHeading } from "./page-heading";
+import { MathText } from "./math-text";
 export function GradingQueue() {
   const [data, setData] = useState<Queue | null>(null),
     [error, setError] = useState(""),
@@ -255,19 +256,31 @@ function GradeForm({
   return (
     <article className="panel quiz-panel">
       <span className="development-label">{saved.manual_grading_status}</span>
-      <h2 className="quiz-question">{item.question_text}</h2>
+      <h2 className="quiz-question">
+        <MathText text={item.question_text} />
+      </h2>
       <h3>Student response</h3>
       <p className="quiz-question">
-        {blank ? "No written response submitted." : item.free_response}
+        <MathText
+          text={
+            blank
+              ? "No written response submitted."
+              : (item.free_response ?? "")
+          }
+        />
       </p>
       <details className="solution">
         <summary>Reference answer and explanation</summary>
         <div>
           <p className="quiz-question">
-            {item.expected_answer ?? "No reference answer provided."}
+            <MathText
+              text={item.expected_answer ?? "No reference answer provided."}
+            />
           </p>
           {item.explanation && (
-            <p className="quiz-question">{item.explanation}</p>
+            <p className="quiz-question">
+              <MathText text={item.explanation} />
+            </p>
           )}
         </div>
       </details>
