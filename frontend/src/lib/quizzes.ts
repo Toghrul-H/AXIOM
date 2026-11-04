@@ -35,6 +35,13 @@ export type AttemptSummary = {
   submitted_at: string | null;
   objective_score: number | null;
   objective_total: number;
+  answered_question_count: number;
+  manual_answer_count: number;
+  pending_grading_count: number;
+  graded_question_count: number;
+  grading_status:
+    "NOT_APPLICABLE" | "AWAITING_GRADING" | "PARTIALLY_GRADED" | "GRADED";
+  is_practice: boolean;
 };
 export type AttemptItem = Answer & {
   topic_slug?: string | null;

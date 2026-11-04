@@ -52,6 +52,12 @@ class AttemptSummary(Schema):
     submitted_at: datetime | None
     objective_score: int | None
     objective_total: int
+    answered_question_count: int = 0
+    manual_answer_count: int = 0
+    pending_grading_count: int = 0
+    graded_question_count: int = 0
+    grading_status: Literal['NOT_APPLICABLE', 'AWAITING_GRADING', 'PARTIALLY_GRADED', 'GRADED'] = 'NOT_APPLICABLE'
+    is_practice: bool = False
 
 class StudentOption(Schema):
     id: int

@@ -3,15 +3,17 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
-from app.models import Question
+from app.models import Question, Topic
 from app.quiz_models import Quiz, QuizQuestion, QuizAttempt, AttemptAnswer, AttemptOption
 from app.quiz_schemas import QuizWrite, ActiveItem, AttemptSummary
 from app.schemas import AnswerCheck
 from app.services.grading import check_answer
 
 
-def get_quiz(session: Session, quiz_id: int, lock=False) -> Quiz:
+def get_quiz(session: Session, quiz_id: int, lock=False, include_practice=False) -> Quiz:
     stmt = select(Quiz).where(Quiz.id == quiz_id)
+    if not include_practice:
+        stmt = stmt.where(Quiz.is_practice.is_(False))
     if lock:
         stmt = stmt.with_for_update()
     quiz = session.scalar(stmt)
@@ -47,6 +49,10 @@ def start_attempt(session: Session, quiz_id: int, identity: int) -> QuizAttempt:
     questions = {q.id:q for q in session.scalars(select(Question).where(Question.id.in_([x.question_id for x in quiz.questions])).order_by(Question.id).with_for_update(of=Question))}
     if len(questions) != len(quiz.questions) or any(not q.is_active for q in questions.values()):
         raise HTTPException(409, 'Quiz contains unavailable questions')
+    return _snapshot_attempt(session, quiz, identity, questions)
+
+
+def _snapshot_attempt(session: Session, quiz: Quiz, identity: int, questions: dict[int, Question]) -> QuizAttempt:
     attempt = QuizAttempt(quiz_id=quiz.id,user_id=identity,quiz_title=quiz.title,objective_total=0)
     for entry in quiz.questions:
         q = questions[entry.question_id]
@@ -65,6 +71,46 @@ def start_attempt(session: Session, quiz_id: int, identity: int) -> QuizAttempt:
     return attempt
 
 
+def start_practice_attempt(session: Session, topic_slug: str, question_count: int, identity: int) -> QuizAttempt:
+    """Create a private practice composition and snapshot it as an attempt.
+
+    Only active, curated DMI imports are eligible.  A private Quiz preserves
+    the existing immutable-attempt architecture without exposing a student's
+    selected composition to other students or the staff quiz-management list.
+    """
+    topic = session.scalar(select(Topic).where(Topic.slug == topic_slug))
+    if topic is None:
+        raise HTTPException(404, 'Practice topic not found')
+    eligible = list(session.scalars(
+        select(Question).where(
+            Question.topic_id == topic.id,
+            Question.is_active.is_(True),
+            Question.external_source_id.like('M10A3:%'),
+        ).order_by(Question.id).with_for_update(of=Question)
+    ))
+    if len(eligible) < question_count:
+        raise HTTPException(422, 'Not enough available practice questions for this topic')
+    seen = set(session.scalars(
+        select(AttemptAnswer.question_id).join(QuizAttempt).where(
+            QuizAttempt.user_id == identity,
+            AttemptAnswer.question_id.is_not(None),
+        )
+    ))
+    unseen = [question for question in eligible if question.id not in seen]
+    selected = (unseen + [question for question in eligible if question.id in seen])[:question_count]
+    quiz = Quiz(
+        title=f'Practice · {topic.name}',
+        description=f'Private topic practice: {topic.name}',
+        status='INACTIVE',
+        is_practice=True,
+        practice_owner_id=identity,
+        questions=[QuizQuestion(question_id=question.id, position=index, points=1) for index, question in enumerate(selected)],
+    )
+    session.add(quiz)
+    session.flush()
+    return _snapshot_attempt(session, quiz, identity, {question.id: question for question in selected})
+
+
 def get_attempt(session: Session, attempt_id: UUID, identity: int, lock=False) -> QuizAttempt:
     stmt = select(QuizAttempt).where(QuizAttempt.id == attempt_id, QuizAttempt.user_id == identity)
     if lock:
@@ -73,6 +119,27 @@ def get_attempt(session: Session, attempt_id: UUID, identity: int, lock=False) -
     if attempt is None:
         raise HTTPException(404,'Attempt not found')
     return attempt
+
+
+def attempt_summary(attempt: QuizAttempt) -> dict:
+    """A student-safe status summary derived from immutable attempt items."""
+    result = AttemptSummary.model_validate(attempt).model_dump()
+    manual = [item for item in attempt.items if item.response_type == 'FREE_RESPONSE']
+    pending = [item for item in manual if item.manual_points is None]
+    graded = [item for item in manual if item.manual_points is not None]
+    result.update(
+        answered_question_count=sum(answered(item) for item in attempt.items),
+        manual_answer_count=len(manual),
+        pending_grading_count=len(pending) if attempt.status == 'SUBMITTED' else 0,
+        graded_question_count=len(graded),
+        grading_status=(
+            'NOT_APPLICABLE' if not manual else
+            'AWAITING_GRADING' if attempt.status != 'SUBMITTED' or not graded else
+            'PARTIALLY_GRADED' if pending else 'GRADED'
+        ),
+        is_practice=bool(attempt.quiz.is_practice),
+    )
+    return result
 
 
 def answered(item: AttemptAnswer) -> bool:
@@ -134,7 +201,7 @@ def submit_attempt(session: Session, attempt_id: UUID, identity: int) -> QuizAtt
 def review(attempt: QuizAttempt) -> dict:
     if attempt.status != 'SUBMITTED':
         raise HTTPException(409,'Finish the quiz before reviewing answers')
-    result = AttemptSummary.model_validate(attempt).model_dump()
+    result = attempt_summary(attempt)
     result.update(correct_count=0,incorrect_count=0,unanswered_objective_count=0,ungraded_count=0,items=[])
     for item in attempt.items:
         objective = item.response_type != 'FREE_RESPONSE'

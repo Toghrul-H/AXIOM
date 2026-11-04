@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { StudentPreview } from "@/components/student-preview";
 import { StudentProgress } from "@/components/student-progress";
 export default async function Page({
@@ -8,7 +8,6 @@ export default async function Page({
 }) {
   const { section } = await params;
   if (section === "progress") return <StudentProgress />;
-  if (section === "practice") redirect("/student/quizzes");
   if (section !== "learn") notFound();
   return <StudentPreview section={section} />;
 }

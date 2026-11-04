@@ -252,7 +252,7 @@ def isolated_import_session():
             connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
             config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
             config.attributes["connection"] = connection
-            command.upgrade(config, "0013")
+            command.upgrade(config, "0014")
             with Session(connection, join_transaction_mode="create_savepoint") as session:
                 yield session
         finally:

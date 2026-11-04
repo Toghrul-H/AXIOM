@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { quizzesApi, type QuizSummary } from "@/lib/quizzes";
+import { learningApi, type LearningSummary } from "@/lib/learning";
 import { useProgress } from "@/lib/use-progress";
 import { CourseTopics } from "./course-topics";
 import { PageHeading } from "./page-heading";
@@ -19,6 +20,8 @@ export function StudentDashboard() {
   const { data, error, retry } = useProgress();
   const [quizzes, setQuizzes] = useState<QuizSummary[] | null>(null);
   const [quizError, setQuizError] = useState(false);
+  const [learning, setLearning] = useState<LearningSummary | null>(null);
+  const [learningError, setLearningError] = useState(false);
   useEffect(() => {
     let live = true;
     quizzesApi
@@ -28,6 +31,20 @@ export function StudentDashboard() {
       })
       .catch(() => {
         if (live) setQuizError(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    let live = true;
+    learningApi
+      .summary()
+      .then((summary) => {
+        if (live) setLearning(summary);
+      })
+      .catch(() => {
+        if (live) setLearningError(true);
       });
     return () => {
       live = false;
@@ -72,6 +89,54 @@ export function StudentDashboard() {
           </div>
           <ProgressHistory attempts={data.recent_attempts} compact />
         </>
+      )}
+      <div className="section-heading">
+        <h2>Practice and feedback</h2>
+        <Link className="text-link" href="/student/practice">
+          Topic practice →
+        </Link>
+      </div>
+      {learningError ? (
+        <p role="alert">
+          Your practice summary could not be loaded.{" "}
+          <Link href="/student/practice">Open practice to retry.</Link>
+        </p>
+      ) : !learning ? (
+        <p role="status">Loading learning summary…</p>
+      ) : (
+        <section className="panel learning-summary">
+          <div>
+            <p className="eyebrow">CONTINUE LEARNING</p>
+            <h2>{learning.continue_learning.title}</h2>
+            <p>{learning.continue_learning.description}</p>
+            <Link
+              className="button button-primary"
+              href={
+                learning.continue_learning.kind === "RESUME_ATTEMPT"
+                  ? `/student/quizzes/attempts/${learning.continue_learning.attempt_id}`
+                  : "/student/practice"
+              }
+            >
+              {learning.continue_learning.kind === "RESUME_ATTEMPT"
+                ? "Resume"
+                : "Choose topic"}
+            </Link>
+          </div>
+          <div className="learning-metrics">
+            <span>
+              <strong>{learning.overview.total_attempted_questions}</strong>{" "}
+              questions answered
+            </span>
+            <span>
+              <strong>{learning.overview.completed_practice_sessions}</strong>{" "}
+              completed sessions
+            </span>
+            <span>
+              <strong>{learning.overview.pending_grading_count}</strong>{" "}
+              responses awaiting grading
+            </span>
+          </div>
+        </section>
       )}
       <div className="section-heading">
         <h2>Available quizzes</h2>

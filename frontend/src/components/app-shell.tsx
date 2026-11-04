@@ -84,7 +84,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : [
         { href: "/student", label: "Dashboard", icon: LayoutDashboard },
         { href: "/student/learn", label: "Learn", icon: BookOpen },
+        { href: "/student/practice", label: "Practice", icon: Shapes },
         { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
+        { href: "/student/history", label: "History", icon: BookOpen },
         {
           href: "/student/progress",
           label: "Progress",

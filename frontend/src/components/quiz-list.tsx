@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 import { quizzesApi, QuizSummary, AttemptSummary } from "@/lib/quizzes";
 import { PageHeading } from "./page-heading";
 
-export function QuizList() {
+export function QuizList({ historyOnly = false }: { historyOnly?: boolean }) {
   const router = useRouter();
   const [quizzes, setQuizzes] = useState<QuizSummary[] | null>(null);
   const [attempts, setAttempts] = useState<AttemptSummary[]>([]);
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const quizRows = quizzes ?? [];
   useEffect(() => {
     let live = true;
-    Promise.all([quizzesApi.list(), quizzesApi.history(offset)])
+    Promise.all([
+      historyOnly ? Promise.resolve([]) : quizzesApi.list(),
+      quizzesApi.history(offset),
+    ])
       .then(([q, a]) => {
         if (live) {
           setQuizzes(q);
@@ -27,7 +31,7 @@ export function QuizList() {
     return () => {
       live = false;
     };
-  }, [offset]);
+  }, [offset, historyOnly]);
   async function start(id: number) {
     setBusy(true);
     setError("");
@@ -43,44 +47,54 @@ export function QuizList() {
     <>
       <PageHeading
         eyebrow="YOUR LEARNING"
-        title="Quizzes"
-        description="Choose a quiz, work through the questions, then review every answer after finishing."
+        title={historyOnly ? "Learning history" : "Quizzes"}
+        description={
+          historyOnly
+            ? "Review submitted work, grading status, and saved practice sessions."
+            : "Choose a quiz, work through the questions, then review every answer after finishing."
+        }
       />
-      <p className="quiz-notice">
-        Your attempts are saved to your account. Sign in to resume them on
-        another device.
-      </p>
+      {!historyOnly && (
+        <p className="quiz-notice">
+          Your attempts are saved to your account. Sign in to resume them on
+          another device.
+        </p>
+      )}
       {error && (
         <p className="error-message" role="alert">
           {error}
         </p>
       )}
-      {!quizzes ? (
+      {!historyOnly && !quizzes ? (
         <p role="status">Loading quizzes…</p>
       ) : (
-        <div className="quiz-list">
-          {quizzes.map((q) => (
-            <article className="panel quiz-panel" key={q.id}>
-              <h2>{q.title}</h2>
-              <p>{q.description}</p>
-              <p>
-                {q.question_count} questions · {q.objective_points}{" "}
-                automatically gradable points · Available
-              </p>
-              <button
-                disabled={busy}
-                className="button button-primary"
-                onClick={() => start(q.id)}
-                aria-label={`Start ${q.title}`}
-              >
-                Start Quiz
-              </button>
-            </article>
-          ))}
-          {quizzes.length === 0 && <p>No quizzes are available yet.</p>}
-        </div>
+        !historyOnly && (
+          <div className="quiz-list">
+            {quizRows.map((q) => (
+              <article className="panel quiz-panel" key={q.id}>
+                <h2>{q.title}</h2>
+                <p>{q.description}</p>
+                <p>
+                  {q.question_count} questions · {q.objective_points}{" "}
+                  automatically gradable points · Available
+                </p>
+                <button
+                  disabled={busy}
+                  className="button button-primary"
+                  onClick={() => start(q.id)}
+                  aria-label={`Start ${q.title}`}
+                >
+                  Start Quiz
+                </button>
+              </article>
+            ))}
+            {quizRows.length === 0 && <p>No quizzes are available yet.</p>}
+          </div>
+        )
       )}
-      <h2 className="quiz-section-title">Your quiz attempts</h2>
+      <h2 className="quiz-section-title">
+        {historyOnly ? "Your activity" : "Your quiz attempts"}
+      </h2>
       <div className="quiz-list">
         {attempts.map((a) => (
           <article className="panel quiz-panel" key={a.id}>
@@ -92,6 +106,9 @@ export function QuizList() {
                 : a.objective_total
                   ? `Automatically graded points: ${a.objective_score} / ${a.objective_total}`
                   : "Written responses · not automatically graded"}
+              {a.status === "SUBMITTED" &&
+                a.manual_answer_count > 0 &&
+                ` · ${a.grading_status === "GRADED" ? "Manual grading complete" : a.grading_status === "PARTIALLY_GRADED" ? `${a.pending_grading_count} response${a.pending_grading_count === 1 ? "" : "s"} awaiting grading` : "Awaiting manual grading"}`}
             </p>
             <Link
               className="button button-secondary"

@@ -9,6 +9,7 @@ from app.routers.quizzes import router as quiz_router
 from app.routers.auth import router as auth_router
 from app.routers.progress import router as progress_router
 from app.routers.manual_grading import router as manual_grading_router
+from app.routers.learning import router as learning_router
 from app.config import get_settings
 
 app = FastAPI(title="DMI Platform API")
@@ -18,6 +19,7 @@ app.include_router(quiz_router)
 app.include_router(auth_router)
 app.include_router(progress_router)
 app.include_router(manual_grading_router)
+app.include_router(learning_router)
 from app.routers.assessments import router as assessments_router
 app.include_router(assessments_router)
 

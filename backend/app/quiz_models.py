@@ -9,11 +9,18 @@ from app.database import Base
 
 class Quiz(Base):
     __tablename__ = 'quizzes'
-    __table_args__ = (CheckConstraint("status IN ('DRAFT','ACTIVE','INACTIVE')", name='ck_quizzes_status'),)
+    __table_args__ = (
+        CheckConstraint("status IN ('DRAFT','ACTIVE','INACTIVE')", name='ck_quizzes_status'),
+        CheckConstraint("(is_practice = false AND practice_owner_id IS NULL) OR (is_practice = true AND practice_owner_id IS NOT NULL)", name='ck_quizzes_practice_owner'),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default='DRAFT', server_default='DRAFT', index=True)
+    # Private, student-created practice compositions reuse the durable quiz
+    # snapshot engine but are never listed as staff-authored course quizzes.
+    is_practice: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false', index=True)
+    practice_owner_id: Mapped[int | None] = mapped_column(ForeignKey('users.id', ondelete='RESTRICT'), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     questions: Mapped[list['QuizQuestion']] = relationship(cascade='all, delete-orphan', passive_deletes=True, lazy='selectin', order_by='QuizQuestion.position')
@@ -50,6 +57,9 @@ class QuizAttempt(Base):
     objective_score: Mapped[int | None]
     objective_total: Mapped[int]
     items: Mapped[list['AttemptAnswer']] = relationship(cascade='all, delete-orphan',passive_deletes=True,lazy='selectin',order_by='AttemptAnswer.position')
+    # Keep locking attempt rows valid on PostgreSQL; joined eager loading would
+    # turn `FOR UPDATE` into an outer join over quizzes.
+    quiz: Mapped[Quiz] = relationship(lazy='selectin', foreign_keys=[quiz_id])
 
 
 class AttemptAnswer(Base):

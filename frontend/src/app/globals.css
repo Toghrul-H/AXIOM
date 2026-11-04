@@ -828,6 +828,87 @@ h1 {
 .text-link:hover {
   text-decoration: underline;
 }
+.practice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.practice-topic {
+  appearance: none;
+  text-align: left;
+  padding: 18px;
+  color: var(--ink);
+}
+.practice-topic.selected {
+  border: 2px solid #203858;
+}
+.practice-topic strong,
+.practice-topic span,
+.practice-topic small {
+  display: block;
+}
+.practice-topic span {
+  font-size: 12px;
+  margin-top: 7px;
+}
+.practice-topic small {
+  color: var(--muted);
+  margin-top: 10px;
+}
+.practice-start,
+.learning-summary {
+  margin-top: 20px;
+  padding: 22px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.practice-start h2,
+.learning-summary h2 {
+  margin-bottom: 6px;
+}
+.practice-start p,
+.learning-summary p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.practice-start label {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.practice-start select {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #f5f0e5;
+  color: var(--ink);
+  padding: 8px;
+}
+.learning-metrics {
+  display: grid;
+  gap: 9px;
+  min-width: 200px;
+}
+.learning-metrics span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.learning-metrics strong {
+  color: var(--ink);
+  margin-right: 5px;
+}
+@media (max-width: 760px) {
+  .practice-grid {
+    grid-template-columns: 1fr;
+  }
+  .practice-start,
+  .learning-summary {
+    align-items: stretch;
+  }
+}
 .learning-tip {
   padding: 24px 7px 0;
 }
