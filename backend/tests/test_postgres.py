@@ -65,6 +65,13 @@ def test_database_and_metadata(metadata):
     assert {t["name"] for t in metadata["topics"] if t["parent_id"] is None} >= {"Foundations", "Complex Numbers", "Combinatorics", "Graphs"}
 
 
+def test_database_aware_health_probe(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert response.headers["cache-control"] == "no-store"
+
+
 @pytest.mark.parametrize("kind", ["FREE_RESPONSE", "SINGLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE"])
 def test_crud_persistence(client, factory, kind):
     body = factory(kind)

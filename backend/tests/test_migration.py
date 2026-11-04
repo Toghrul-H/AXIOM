@@ -101,3 +101,31 @@ def test_0005_preserves_attempt_snapshots_and_bootstraps_admin(submitted, monkey
         finally:
             connection.execute(text('SET LOCAL search_path TO public'))
             connection.execute(DropSchema(schema,cascade=True))
+
+
+def test_0013_and_0014_upgrade_preserve_existing_0012_rows():
+    """Rehearse the production historical baseline in a disposable schema."""
+    schema = f'dmi_release_0012_{uuid4().hex}'
+    with get_engine().begin() as connection:
+        connection.execute(CreateSchema(schema))
+        try:
+            connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+            config = Config(str(Path(__file__).resolve().parents[1] / 'alembic.ini'))
+            config.attributes['connection'] = connection
+            command.upgrade(config, '0012')
+            user_id = connection.scalar(text("INSERT INTO users(email,role) VALUES ('fixture@example.test','STUDENT') RETURNING id"))
+            quiz_id = connection.scalar(text("INSERT INTO quizzes(title,status) VALUES ('Existing course quiz','ACTIVE') RETURNING id"))
+            before = dict(connection.execute(text('SELECT * FROM quizzes WHERE id=:id'), {'id': quiz_id}).mappings().one())
+            command.upgrade(config, '0014')
+            after = dict(connection.execute(text('SELECT * FROM quizzes WHERE id=:id'), {'id': quiz_id}).mappings().one())
+            assert {key: after[key] for key in before} == before
+            assert after['is_practice'] is False and after['practice_owner_id'] is None
+            assert connection.scalar(text("SELECT external_source_id FROM questions LIMIT 1")) is None
+            assert connection.scalar(text("SELECT count(*) FROM pg_constraint WHERE conrelid='quizzes'::regclass AND conname='ck_quizzes_practice_owner'")) == 1
+            assert connection.scalar(text("SELECT count(*) FROM pg_constraint WHERE conrelid='quizzes'::regclass AND conname='fk_quizzes_practice_owner'")) == 1
+            connection.execute(text("INSERT INTO quizzes(title,status,is_practice,practice_owner_id) VALUES ('Private fixture','INACTIVE',true,:user)"), {'user': user_id})
+            command.downgrade(config, '0012')
+            command.upgrade(config, '0014')
+        finally:
+            connection.execute(text('SET LOCAL search_path TO public'))
+            connection.execute(DropSchema(schema, cascade=True))

@@ -1,7 +1,10 @@
-from fastapi import FastAPI, Request
+from typing import Annotated
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.routers.questions import router
 from app.routers.metadata import router as metadata_router
@@ -11,6 +14,7 @@ from app.routers.progress import router as progress_router
 from app.routers.manual_grading import router as manual_grading_router
 from app.routers.learning import router as learning_router
 from app.config import get_settings
+from app.database import get_session
 
 app = FastAPI(title="DMI Platform API")
 app.include_router(router)
@@ -56,5 +60,12 @@ async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSON
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "DMI Platform API"}
+
+
+@app.get("/health")
+def health(session: Annotated[Session, Depends(get_session)]) -> dict[str, str]:
+    """Database-aware readiness probe without exposing connection details."""
+    session.execute(text("SELECT 1"))
+    return {"status": "ok"}
 
 

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     database_name: str = "dmi_platform"
     database_user: str = "dmi_app"
     database_password: SecretStr = SecretStr("")
+    # libpq defaults to opportunistic encryption. Production Neon connections
+    # must explicitly require TLS rather than relying on that default.
+    database_sslmode: Literal['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'] = 'prefer'
     pdf_compiler_mode: Literal['disabled', 'docker', 'native'] = 'disabled'
     pdf_docker_executable: str = 'docker'
     pdf_tectonic_executable: str = '/usr/local/bin/tectonic'
@@ -83,6 +86,7 @@ class Settings(BaseSettings):
             host=self.database_host,
             port=self.database_port,
             database=self.database_name,
+            query={'sslmode': self.database_sslmode},
         )
 
 

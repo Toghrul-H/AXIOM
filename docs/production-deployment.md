@@ -1,6 +1,6 @@
 # AXIOM Production Deployment and Maintenance
 
-Reviewed against source on 28 October 2026. Hosting below is **owner-reported**, not independently inspected in this task. This guide records procedures for an authorized operator; it does not authorize a deployment. No secret values belong here.
+Reviewed against local source on 4 November 2026. Hosting below is **owner-reported**, not independently inspected in this task. This guide records procedures for an authorized operator; it does not authorize a deployment. No secret values belong here.
 
 ## Architecture and release record
 
@@ -8,7 +8,7 @@ Browser → Vercel Next.js same-origin API proxy → Render FastAPI container �
 
 - Reported frontend: https://axiom-orcin-xi.vercel.app/
 - Reported backend: https://axiom-api-te6o.onrender.com/
-- Source Alembic head: `0012`; owner reports this as the latest verified live revision.
+- Source Alembic head: `0014`; the historical production baseline was reported as `0012` and must be re-verified by an authorized operator.
 - Before each release, record Git commit, tested image digest, database revision, test evidence, timestamp and operator. The owner must confirm the actual GHCR namespace/package, resource-image digest, live service IDs and current deployment.
 
 ## Required configuration
@@ -17,8 +17,8 @@ Configure secrets only in the service's secret/environment controls. Process var
 
 | Component            | Variable names / intended values                                                                                                                                                                                                                          |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Neon connection      | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`; use owner-approved values and migration permissions only for the migration runner                                                                                |
-| PostgreSQL transport | Preserve the approved libpq TLS configuration (for example `PGSSLMODE=require` where appropriate); `database_url()` does not add an explicit SSL mode. Confirm the owner's connection/security policy rather than assuming the Docker move configures TLS |
+| Neon connection      | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_SSLMODE=require`; use owner-approved values and migration permissions only for the migration runner                                                   |
+| PostgreSQL transport | The application passes `DATABASE_SSLMODE` to libpq. Neon production must use `require` or a stricter owner-approved mode; confirm the Neon endpoint and certificate policy before release.                                                               |
 | Session security     | `AUTH_COOKIE_SECURE=true`, `AUTH_ALLOWED_ORIGINS=["https://axiom-orcin-xi.vercel.app"]`, `AUTH_SESSION_HOURS`, `AUTH_REQUESTS_PER_MINUTE`                                                                                                                 |
 | Email                | `EMAIL_DELIVERY_PROVIDER=brevo`, `BREVO_API_KEY`, `EMAIL_HTTP_TIMEOUT_SECONDS`, `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`, `FRONTEND_BASE_URL=https://axiom-orcin-xi.vercel.app`; sender must be verified with Brevo                                        |
 | PDF                  | `PDF_COMPILER_MODE=native`, `PDF_TECTONIC_EXECUTABLE=/usr/local/bin/tectonic`, `PDF_CACHE_DIRECTORY=/opt/tectonic-cache`, `PDF_TIMEOUT_SECONDS=30`, `PDF_MAX_BYTES=4000000`                                                                               |
@@ -58,7 +58,7 @@ Record and deploy the returned registry digest, not a moving `latest` tag or a l
 
 ## Render and Vercel configuration
 
-Prefer deploying the tested prebuilt GHCR image to the existing Render service, retaining its hostname. Render supports changing source/runtime under Settings → Build → Source → Edit. Record current settings before changing them, review environment/health settings, supply private-registry access if necessary and remove any obsolete start-command override. The image CMD starts Uvicorn on `$PORT`, with no seeding or migrations. Health path `/` verifies process availability only. A Git/Dockerfile build instead needs backend as build context and an approved resource-image build argument. See [Render Docker](https://render.com/docs/docker).
+Prefer deploying the tested prebuilt GHCR image to the existing Render service, retaining its hostname. Render supports changing source/runtime under Settings → Build → Source → Edit. Record current settings before changing them, review environment/health settings, supply private-registry access if necessary and remove any obsolete start-command override. The image CMD starts Uvicorn on `$PORT`, with no seeding or migrations. Set the health path to `/health`; it verifies database reachability without exposing connection details. A Git/Dockerfile build instead needs backend as build context and an approved resource-image build argument. See [Render Docker](https://render.com/docs/docker).
 
 Vercel uses the `frontend` project root, Next.js framework, the lockfile/package-manager version, `pnpm install --frozen-lockfile` and `pnpm build`. This is not a static export. Set the server-side API base for each intended environment; preview deployments should not silently use production data. Verify the effective Node runtime and function duration in the owner's project. The PDF route has no explicit `maxDuration`; its allowance must cover backend cold start plus compilation. Keep same-origin handlers/rewrites and the existing binary response flow.
 
@@ -72,7 +72,7 @@ Vercel uses the `frontend` project root, Next.js framework, the lockfile/package
    ```text
    python -m alembic current
    python -m alembic heads
-   python -m alembic upgrade 0012
+   python -m alembic upgrade 0014
    python -m alembic current
    python -m alembic check
    ```
@@ -81,13 +81,13 @@ Vercel uses the `frontend` project root, Next.js framework, the lockfile/package
 
 5. Deploy backend, verify it, then deploy/promote the compatible frontend. Re-enable automatic deployment only after acceptance.
 
-Migration order is `0009 → 0010 → 0011 → 0012`. 0010 creates assessment tables; 0011 adds nullable writing times; 0012 adds nullable policies/submission fields and new related tables. Existing user/question/quiz/attempt data is not rewritten. DDL still requires privileges and locks. No M9 tables or historical document values are seeded automatically.
+Migration order is `0009 → 0010 → 0011 → 0012 → 0013 → 0014`. 0010 creates assessment tables; 0011 adds nullable writing times; 0012 adds nullable policies/submission fields and new related tables; 0013 adds nullable question provenance; 0014 adds default-false private-practice flags and nullable owners to quizzes. Existing user/question/quiz/attempt data is not rewritten. DDL still requires privileges and locks. No M9 tables or historical document values are seeded automatically.
 
 Render Free does not provide the paid pre-deploy migration command or interactive shell. Use an approved external runner; do not move migrations into Docker build or silently add them to startup. See [Render deploy commands](https://render.com/docs/deploys). Never run the integration suite against Neon/production.
 
 ## Acceptance and troubleshooting
 
-After an authorized rollout, check `/`, then real database-backed behavior: login/logout/session refresh, Student verification email, RBAC and CSRF rejection, Question Bank/quiz operations, Student submission/review, manual grading, assessment save/reload, all seven saved-only PDF downloads and a cold-start request. Use approved test accounts/data and remove only agreed fixtures. Do not treat a green root health check as database or email verification.
+After an authorized rollout, check `/health` for a database-aware readiness probe, then real database-backed behavior: login/logout/session refresh, Student verification email, RBAC and CSRF rejection, Question Bank/quiz operations, Student submission/review, manual grading, assessment save/reload, all seven saved-only PDF downloads and a cold-start request. Use approved test accounts/data and remove only agreed fixtures. Do not treat a green health check as email verification.
 
 | Symptom                        | Checks                                                                                                                      |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |

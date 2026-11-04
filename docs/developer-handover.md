@@ -87,6 +87,6 @@ When maintaining AXIOM: preserve snapshot semantics; add focused permission/CSRF
 
 ## Known limits and ownership
 
-No password-reset/MFA workflow, distributed rate limiter, background PDF queue, grade revision history, staff-facing Student Progress dashboard or group-scoped grading. Mathematical input is Unicode, not symbolic validation. Future teaching-tool cards are placeholders. Free-host cold starts, finite memory and request timeouts affect availability. The root health endpoint does not verify PostgreSQL, email or compiler health.
+No password-reset/MFA workflow, distributed rate limiter, background PDF queue, grade revision history, staff-facing Student Progress dashboard or group-scoped grading. Mathematical input is Unicode, not symbolic validation. Future teaching-tool cards are placeholders. Free-host cold starts, finite memory and request timeouts affect availability. `/health` verifies PostgreSQL reachability, but not email or compiler health.
 
 Before accepting maintenance ownership, obtain repository/GHCR/Render/Vercel/Neon/Brevo access through their access controls, artifact references, a tested recovery procedure and agreed data-retention/incident responsibilities. Never transfer these secrets in documentation. See [final handover](final-handover.md).
