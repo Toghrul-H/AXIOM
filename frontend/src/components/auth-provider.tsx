@@ -118,7 +118,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (staffPath && user.role === "STUDENT") ||
       (path.startsWith("/student") && user.role !== "STUDENT") ||
       ((path.startsWith("/teacher/users") ||
-        path.startsWith("/teacher/assessments")) &&
+        path.startsWith("/teacher/assessments") ||
+        path.startsWith("/teacher/recruitment")) &&
         !["LECTURER", "ADMIN"].includes(user.role));
     content = (
       <AppShell>

@@ -40,9 +40,15 @@ def _raw_engine():
     return engine
 
 
-def _migrate() -> None:
+def _migrate(schema: str) -> None:
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
-    command.upgrade(config, "head")
+    # Bind Alembic to the same schema-scoped connection used by the fixture.
+    # This avoids a process-level/default search_path ever leaking local E2E
+    # data into the development schema.
+    with get_engine().begin() as connection:
+        connection.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
 
 
 def create(schema: str, password: str) -> None:
@@ -55,34 +61,41 @@ def create(schema: str, password: str) -> None:
             raise RuntimeError(f"Refusing to reuse existing E2E schema {schema!r}.")
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
     try:
-        _migrate()
-        with Session(get_engine()) as session, session.begin():
-            logic = session.scalar(select(Topic).where(Topic.slug == "logic"))
-            if logic is None:
-                raise RuntimeError("Seeded logic topic is missing after migration.")
-            digest = passwords.hash(password)
-            session.add_all((
-                User(email=STUDENT_EMAIL, password_hash=digest, role="STUDENT", email_verified=True),
-                User(email=LECTURER_EMAIL, password_hash=digest, role="LECTURER", email_verified=True),
-            ))
-            for number in range(1, 4):
-                session.add(Question(
-                    # Retain the curated namespace required by the practice
-                    # selector while making fixture provenance unique to this
-                    # disposable schema.
-                    external_source_id=f"M10A3:E2E-{schema}-{number}",
-                    source_reference="M12A isolated E2E fixture",
-                    topic=logic,
-                    title=f"E2E Logic Practice {number}",
-                    difficulty="easy",
-                    response_type="FREE_RESPONSE",
-                    skill_type="PROOF",
-                    question_text=f"Give a short proof for E2E fixture {number}.",
-                    expected_answer=f"Reference proof {number}.",
-                    correct_boolean=None,
-                    explanation=f"Worked E2E explanation {number}.",
-                    is_active=True,
+        _migrate(schema)
+        # Keep fixture writes on an explicitly schema-pinned connection, even
+        # when an application process has other pooled local connections.
+        with get_engine().begin() as connection:
+            connection.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
+            if connection.scalar(text("SELECT current_schema()")) != schema:
+                raise RuntimeError("Refusing E2E fixture write outside its isolated schema.")
+            with Session(connection) as session:
+                logic = session.scalar(select(Topic).where(Topic.slug == "logic"))
+                if logic is None:
+                    raise RuntimeError("Seeded logic topic is missing after migration.")
+                digest = passwords.hash(password)
+                session.add_all((
+                    User(email=STUDENT_EMAIL, password_hash=digest, role="STUDENT", email_verified=True),
+                    User(email=LECTURER_EMAIL, password_hash=digest, role="LECTURER", email_verified=True),
                 ))
+                for number in range(1, 4):
+                    session.add(Question(
+                        # Retain the curated namespace required by the practice
+                        # selector while making fixture provenance unique to this
+                        # disposable schema.
+                        external_source_id=f"M10A3:E2E-{schema}-{number}",
+                        source_reference="M12A isolated E2E fixture",
+                        topic=logic,
+                        title=f"E2E Logic Practice {number}",
+                        difficulty="easy",
+                        response_type="FREE_RESPONSE",
+                        skill_type="PROOF",
+                        question_text=f"Give a short proof for E2E fixture {number}.",
+                        expected_answer=f"Reference proof {number}.",
+                        correct_boolean=None,
+                        explanation=f"Worked E2E explanation {number}.",
+                        is_active=True,
+                    ))
+                session.flush()
         print(f"Created isolated E2E schema {schema}; seeded {STUDENT_EMAIL} and {LECTURER_EMAIL}.")
     except Exception:
         destroy(schema)

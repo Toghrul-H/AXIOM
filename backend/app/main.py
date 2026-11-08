@@ -26,6 +26,8 @@ app.include_router(manual_grading_router)
 app.include_router(learning_router)
 from app.routers.assessments import router as assessments_router
 app.include_router(assessments_router)
+from app.routers.recruitment import router as recruitment_router
+app.include_router(recruitment_router)
 
 
 @app.middleware("http")

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "./auth-provider";
+import { authRequest } from "@/lib/auth";
 import { Wordmark } from "./wordmark";
 import { futureTools } from "@/lib/future-tools";
 import { usePathname } from "next/navigation";
@@ -28,6 +29,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { user, signOut } = useAuth();
   const [logoutError, setLogoutError] = useState("");
+  const [notifications, setNotifications] = useState<
+    { id: number; title: string; body: string; link: string }[]
+  >([]);
   const demonstrator = user?.role === "DEMONSTRATOR";
   const teacher = user?.role !== "STUDENT";
   const [open, setOpen] = useState(false);
@@ -69,6 +73,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("resize", handleResize);
     };
   }, [open]);
+  useEffect(() => {
+    if (!user) return;
+    void authRequest<{ id: number; title: string; body: string; link: string }[]>("/recruitment/notifications/recruitment")
+      .then(setNotifications)
+      .catch(() => setNotifications([]));
+  }, [user]);
   const links = teacher
     ? [
         { href: "/teacher", label: "Dashboard", icon: LayoutDashboard },
@@ -87,6 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/student/practice", label: "Practice", icon: Shapes },
         { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
         { href: "/student/history", label: "History", icon: BookOpen },
+        { href: "/student/demonstrator-opportunities", label: "Demonstrator Opportunities", icon: GraduationCap },
         {
           href: "/student/progress",
           label: "Progress",
@@ -99,6 +110,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       label: "Staff Management",
       icon: GraduationCap,
     });
+  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+    links.push({ href: "/teacher/recruitment", label: "Demonstrator Recruitment", icon: GraduationCap });
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/assessments",
@@ -259,7 +272,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </summary>
               <div className="account-menu">
                 <strong>Notifications</strong>
-                <p>No new notifications</p>
+                {notifications.length ? notifications.map((item) => (
+                  <Link key={item.id} href={item.link}><strong>{item.title}</strong><p>{item.body}</p></Link>
+                )) : <p>No new notifications</p>}
               </div>
             </details>
             <details className="account-control">
@@ -275,6 +290,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="account-menu">
                 <strong>{user?.email}</strong>
                 <span className="role-chip">{user?.role}</span>
+                {user?.role === "STUDENT" && (
+                  <Link className="button button-secondary" href="/student/demonstrator-opportunities">Demonstrator Applications</Link>
+                )}
                 <button
                   className="button button-secondary"
                   onClick={() => {
