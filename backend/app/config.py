@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+import re
 from pathlib import Path
 
 from pydantic import Field, SecretStr, EmailStr, TypeAdapter, field_validator
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     # libpq defaults to opportunistic encryption. Production Neon connections
     # must explicitly require TLS rather than relying on that default.
     database_sslmode: Literal['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'] = 'prefer'
+    # Test tooling may use a throwaway schema in the local development
+    # database. Production must leave this empty and use its normal schema.
+    database_schema: str = ''
     pdf_compiler_mode: Literal['disabled', 'docker', 'native'] = 'disabled'
     pdf_docker_executable: str = 'docker'
     pdf_tectonic_executable: str = '/usr/local/bin/tectonic'
@@ -66,6 +70,13 @@ class Settings(BaseSettings):
             or (url.scheme == 'http' and url.hostname not in {'localhost', '127.0.0.1', '::1'})):
             raise ValueError('Use an HTTPS frontend origin, or local HTTP origin')
         return value.rstrip('/')
+
+    @field_validator('database_schema')
+    @classmethod
+    def validate_database_schema(cls, value):
+        if value and not re.fullmatch(r'[a-z_][a-z0-9_]{0,62}', value):
+            raise ValueError('DATABASE_SCHEMA must be a lowercase PostgreSQL identifier')
+        return value
     auth_session_hours: int = Field(default=12, ge=1, le=168)
     auth_requests_per_minute: int = Field(default=30, ge=1, le=1000)
     auth_allowed_origins: list[str] = [

@@ -1,10 +1,10 @@
-# Local build: tag the verified M9D.2A image as axiom-tectonic-resources:0.15.0.
-# Remote builds MUST override this with a published immutable registry digest.
-ARG TECTONIC_RESOURCES_IMAGE=axiom-tectonic-resources:0.15.0@sha256:5b8e4619d122d9584c4b87f20eedf7fc574e8e589342b0cdd521f1d05ffcb6d6
+# Every build must explicitly supply a registry image pinned by digest.  There
+# is intentionally no local-tag fallback: Render cannot reproduce one.
+ARG TECTONIC_RESOURCES_IMAGE
 FROM ${TECTONIC_RESOURCES_IMAGE} AS resources
 
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates util-linux \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgraphite2-3 libssl3 util-linux \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 axiom && useradd --uid 10001 --gid axiom --create-home axiom
 WORKDIR /app

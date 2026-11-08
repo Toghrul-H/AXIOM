@@ -58,7 +58,7 @@ Consequently, the authenticated student-practice, teacher-grading, student-revie
 
 **NO-GO for production deployment today.** Local code and automated gates are healthy, but the following mandatory release evidence is absent:
 
-1. An approved immutable, registry-accessible `TECTONIC_RESOURCES_IMAGE` (the Dockerfile default is a local proof-of-concept image, so a clean remote build cannot yet be reproduced).
+1. An approved immutable, registry-accessible `TECTONIC_RESOURCES_IMAGE`. The Dockerfile deliberately requires an explicit digest-pinned build argument, so a clean remote build cannot accidentally use a local proof-of-concept image.
 2. An authorized confirmation of the live Render/Vercel/Neon settings, current production revision, service health path, resource limits, backup/restore evidence, Brevo sender, and Vercel PDF timeout.
 3. Successful disposable-browser E2E evidence for the full student-to-teacher workflow.
 4. A controlled, separately approved production importer procedure if the 52 verified questions must be introduced.
