@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -28,6 +29,12 @@ class VacancyRead(VacancyWrite):
     model_config = {"from_attributes": True}
 
 
+class StaffVacancyRead(VacancyRead):
+    status_counts: dict[str, int]
+    accepted_count: int
+    remaining_positions: int
+
+
 class ApplicationWrite(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
     neptun_code: str = Field(min_length=3, max_length=20, pattern=r"^[A-Za-z0-9]+$")
@@ -45,7 +52,12 @@ class ApplicationRead(ApplicationWrite):
     vacancy_id: int
     status: str
     submitted_at: datetime
+    decision_at: datetime | None = None
     model_config = {"from_attributes": True}
+
+
+class ApplicationStatusUpdate(BaseModel):
+    status: Literal["UNDER_REVIEW", "ACCEPTED", "REJECTED"]
 
 
 class NotificationRead(BaseModel):

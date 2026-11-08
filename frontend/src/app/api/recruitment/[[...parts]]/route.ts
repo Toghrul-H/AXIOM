@@ -5,8 +5,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ parts?
   const suffix = parts.join("/");
   const patterns: Record<string, RegExp> = {
     GET: /^(?:demonstrator-vacancies|demonstrator-applications\/me|notifications\/recruitment|staff\/demonstrator-vacancies(?:\/[1-9][0-9]*(?:\/applications(?:\/[1-9][0-9]*)?(?:\.xlsx)?)?)?)$/,
-    POST: /^(?:demonstrator-vacancies\/[1-9][0-9]*\/applications|staff\/demonstrator-vacancies)$/,
-    PATCH: /^staff\/demonstrator-vacancies\/[1-9][0-9]*$/,
+    POST: /^(?:demonstrator-vacancies\/[1-9][0-9]*\/applications|demonstrator-applications\/[1-9][0-9]*\/withdraw|staff\/demonstrator-vacancies)$/,
+    PATCH: /^staff\/demonstrator-vacancies\/[1-9][0-9]*(?:\/applications\/[1-9][0-9]*)?$/,
   };
   if (!patterns[request.method]?.test(suffix)) return new Response(null, { status: 404 });
   const base = process.env.API_BASE_URL;
