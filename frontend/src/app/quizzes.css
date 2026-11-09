@@ -107,6 +107,28 @@
   cursor: wait;
 }
 
+.recruitment-section { margin-top: 28px; }
+.recruitment-card-heading, .recruitment-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.recruitment-card-heading h2, .recruitment-card-heading h3 { margin-bottom: 4px; }
+.recruitment-card-heading p, .recruitment-row p { margin: 0; color: var(--muted); }
+.recruitment-list { display: grid; gap: 14px; }
+.recruitment-row { border-top: 1px solid var(--champagne); padding-top: 14px; }
+.recruitment-status { display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--gold); border-radius: 999px; padding: 4px 9px; font-size: .72rem; font-weight: 700; letter-spacing: .05em; white-space: nowrap; }
+.status-submitted, .status-under_review { color: var(--navy); background: var(--ivory); }
+.status-accepted { color: var(--ivory); background: var(--navy); }
+.status-rejected, .status-withdrawn { color: var(--navy); background: var(--champagne); }
+.recruitment-metrics, .recruitment-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0; }
+.recruitment-metrics div { min-width: 112px; }
+.recruitment-metrics dt { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+.recruitment-metrics dd { margin: 3px 0 0; font-weight: 700; }
+.recruitment-summary span { font-size: .8rem; }
+.recruitment-form > fieldset, .recruitment-form fieldset { border: 1px solid var(--champagne); border-radius: 8px; margin: 18px 0; padding: 16px; }
+.recruitment-form legend { color: var(--navy); font-weight: 700; padding: 0 6px; }
+.field-error { display: block; color: #8b2f2f; font-size: .86rem; margin: -6px 0 10px; }
+.recruitment-review { border-left: 4px solid var(--gold); background: var(--ivory); margin-top: 18px; padding: 16px; }
+.recruitment-table-wrap { overflow-x: auto; }
+@media (max-width: 700px) { .recruitment-card-heading, .recruitment-row { flex-direction: column; } .recruitment-row .button { width: 100%; } .recruitment-metrics { gap: 12px; } }
+
 .math-symbols {
   display: flex;
   flex-wrap: wrap;
