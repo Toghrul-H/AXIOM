@@ -1,56 +1,35 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Application, ApplicationWrite, ApplicationStatus, recruitmentApi, Vacancy } from "@/lib/recruitment";
+import { Application, ApplicationStatus, ApplicationWrite, QuestionnaireQuestion, recruitmentApi, Vacancy } from "@/lib/recruitment";
 
-const blank: ApplicationWrite = { full_name: "", neptun_code: "", final_grade: null, practice_teacher: "", completion_semester: "", motivation: "", teaching_experience: "", responsibility_interest: "", additional_information: null };
-const statusText: Record<ApplicationStatus, string> = {
-  SUBMITTED: "Submitted — your application has been received.",
-  UNDER_REVIEW: "Under Review — a lecturer is reviewing your application.",
-  ACCEPTED: "Accepted — you have been selected as a demonstrator.",
-  REJECTED: "Rejected — this application was not selected.",
-  WITHDRAWN: "Withdrawn — your questionnaire remains available to authorized staff.",
-};
+const responsibilities = ["Teaching or assisting practice sessions", "Grading assignments", "Helping students", "Preparing learning materials", "Other"];
+const blank = (): ApplicationWrite => ({ full_name: "", neptun_code: "", lecture_grade: "NOT_YET_GRADED", practice_grade: "NOT_YET_GRADED", practice_teacher: "", motivation: "", weekly_availability: 0, preferred_responsibilities: [], relevant_experience: null, additional_comments: null, custom_answers: {} });
+const statusText: Record<ApplicationStatus, string> = { SUBMITTED: "Submitted — your application has been received.", UNDER_REVIEW: "Under review — staff are reviewing your questionnaire.", ACCEPTED: "Accepted — you have been selected as a demonstrator.", REJECTED: "Rejected — the recruitment decision is final.", WITHDRAWN: "Withdrawn — your questionnaire remains available to authorized staff." };
+
+function CustomQuestion({ question, value, setValue }: { question: QuestionnaireQuestion; value: string | string[] | boolean | null | undefined; setValue: (value: string | string[] | boolean | null) => void }) {
+  const label = <>{question.title}{question.required && " *"}</>;
+  if (question.question_type === "YES_NO") return <label>{label}<select value={value === true ? "yes" : value === false ? "no" : ""} onChange={(event) => setValue(event.target.value === "yes" ? true : event.target.value === "no" ? false : null)} required={question.required}><option value="">Select</option><option value="yes">Yes</option><option value="no">No</option></select></label>;
+  if (question.question_type === "SINGLE_CHOICE") return <fieldset><legend>{label}</legend>{question.options?.map((option) => <label key={option}><input type="radio" name={`question-${question.id}`} checked={value === option} onChange={() => setValue(option)} required={question.required} /> {option}</label>)}</fieldset>;
+  if (question.question_type === "MULTIPLE_CHOICE") { const selected = Array.isArray(value) ? value : []; return <fieldset><legend>{label}</legend>{question.options?.map((option) => <label key={option}><input type="checkbox" checked={selected.includes(option)} onChange={(event) => setValue(event.target.checked ? [...selected, option] : selected.filter((item) => item !== option))} /> {option}</label>)}</fieldset>; }
+  return <label>{label}<textarea required={question.required} value={typeof value === "string" ? value : ""} onChange={(event) => setValue(event.target.value)} /></label>;
+}
 
 export function DemonstratorOpportunities() {
-  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
-  const [mine, setMine] = useState<Application[]>([]);
-  const [form, setForm] = useState<ApplicationWrite>(blank);
-  const [selected, setSelected] = useState<Vacancy | null>(null);
-  const [withdrawCandidate, setWithdrawCandidate] = useState<Application | null>(null);
-  const [message, setMessage] = useState("");
+  const [vacancies, setVacancies] = useState<Vacancy[]>([]); const [mine, setMine] = useState<Application[]>([]); const [form, setForm] = useState<ApplicationWrite>(blank); const [selected, setSelected] = useState<Vacancy | null>(null); const [withdrawCandidate, setWithdrawCandidate] = useState<Application | null>(null); const [message, setMessage] = useState("");
   const load = () => Promise.all([recruitmentApi.vacancies(), recruitmentApi.mine()]).then(([available, applications]) => { setVacancies(available); setMine(applications); });
-
   useEffect(() => { void load().catch(() => setMessage("Opportunities could not be loaded.")); }, []);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!selected) return;
-    try {
-      await recruitmentApi.apply(selected.id, form);
-      setMessage("Application submitted.");
-      setSelected(null);
-      setForm(blank);
-      await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Application could not be submitted."); }
-  }
-
-  async function withdraw() {
-    if (!withdrawCandidate) return;
-    try {
-      await recruitmentApi.withdraw(withdrawCandidate.id);
-      setWithdrawCandidate(null);
-      setMessage("Application withdrawn.");
-      await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Application could not be withdrawn."); }
-  }
-
+  async function submit(event: FormEvent) { event.preventDefault(); if (!selected) return; try { await recruitmentApi.apply(selected.id, form); setMessage("Application submitted."); setSelected(null); setForm(blank()); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : "Application could not be submitted."); } }
+  async function withdraw() { if (!withdrawCandidate) return; try { await recruitmentApi.withdraw(withdrawCandidate.id); setWithdrawCandidate(null); setMessage("Application withdrawn."); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : "Application could not be withdrawn."); } }
+  const setAnswer = (id: number, value: string | string[] | boolean | null) => setForm({ ...form, custom_answers: { ...form.custom_answers, [id]: value } });
   return <>
     <section><p className="eyebrow">OPPORTUNITIES</p><h1>Demonstrator Opportunities</h1><p>Published opportunities for Discrete Mathematics I. Applicant counts never reveal applicant identities.</p></section>
     {message && <p role="alert" className="error-message">{message}</p>}
     {mine.length > 0 && <section className="panel"><h2>My submitted applications</h2>{mine.map((application) => <article key={application.id}><strong>{application.neptun_code} · {application.status.replace("_", " ")}</strong><p>{statusText[application.status]}</p><p>Submitted {new Date(application.submitted_at).toLocaleString()}</p>{["SUBMITTED", "UNDER_REVIEW"].includes(application.status) && <button className="button button-secondary" onClick={() => setWithdrawCandidate(application)}>Withdraw application</button>}</article>)}</section>}
     {withdrawCandidate && <section className="panel" role="alertdialog" aria-label="Confirm application withdrawal"><h2>Withdraw application?</h2><p>You cannot reapply for this vacancy. Authorized staff will retain the questionnaire for review.</p><div className="quiz-actions"><button className="button button-primary" onClick={() => void withdraw()}>Confirm withdrawal</button><button className="button button-secondary" onClick={() => setWithdrawCandidate(null)}>Cancel</button></div></section>}
-    {vacancies.length === 0 ? <section className="panel"><p>No demonstrator vacancies are currently open.</p></section> : <div className="quiz-list">{vacancies.map((vacancy) => <article className="panel quiz-panel" key={vacancy.id}><h2>{vacancy.course_name} — Demonstrator Recruitment</h2><p>Semester: {vacancy.semester}</p><p>{vacancy.available_positions} position(s) available — {vacancy.applicant_count} student(s) applied</p><p>Deadline: {vacancy.closes_at ? new Date(vacancy.closes_at).toLocaleString() : "To be announced"}</p><p>{vacancy.description}</p><h3>Responsibilities</h3><p>{vacancy.responsibilities}</p><p><strong>{vacancy.application_open ? "Applications are open." : "Applications are not currently open."}</strong></p>{vacancy.application_open && <button className="button button-primary" onClick={() => { setSelected(vacancy); setMessage(""); }}>Apply Now</button>}</article>)}</div>}
-    {selected && <form className="panel" onSubmit={submit}><h2>Apply: {selected.course_name}</h2><p>Review your answers before submitting; submitted applications cannot be edited.</p>{([['full_name', 'Full name'], ['neptun_code', 'Neptun code'], ['final_grade', 'Final grade (optional)'], ['practice_teacher', "Practice teacher's name"], ['completion_semester', 'Semester completed'], ['motivation', 'Why do you want to become a demonstrator?'], ['teaching_experience', 'Teaching or tutoring experience'], ['responsibility_interest', 'Responsibilities that interest you most'], ['additional_information', 'Additional information (optional)']] as const).map(([key, label]) => <label key={key}>{label}<textarea required={!['final_grade', 'additional_information'].includes(key)} value={(form[key] ?? "") as string} onChange={(event) => setForm({ ...form, [key]: event.target.value || null })} /></label>)}<div className="quiz-actions"><button className="button button-primary">Submit application</button><button type="button" className="button button-secondary" onClick={() => setSelected(null)}>Cancel</button></div></form>}
+    {vacancies.length === 0 ? <section className="panel"><p>No demonstrator vacancies are currently open.</p></section> : <div className="quiz-list">{vacancies.map((vacancy) => <article className="panel quiz-panel" key={vacancy.id}><h2>{vacancy.course_name} — Demonstrator Recruitment</h2><p>Semester: {vacancy.semester}</p><p>{vacancy.available_positions} position(s) available — {vacancy.applicant_count} student(s) applied</p><p>Deadline: {vacancy.closes_at ? new Date(vacancy.closes_at).toLocaleString() : "To be announced"}</p><p>{vacancy.description}</p><h3>Responsibilities</h3><p>{vacancy.responsibilities}</p><p><strong>{vacancy.application_open ? "Applications are open." : "Applications are not currently open."}</strong></p>{vacancy.application_open && <button className="button button-primary" onClick={() => { setSelected(vacancy); setForm(blank()); setMessage(""); }}>Apply Now</button>}</article>)}</div>}
+    {selected && <form className="panel" onSubmit={submit}><h2>Apply: {selected.course_name}</h2><p>Review your answers before submitting; submitted applications cannot be edited.</p><h3>Required information</h3><label>Full name<input required value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} /></label><label>Neptun code<input required minLength={6} maxLength={6} value={form.neptun_code} onChange={(event) => setForm({ ...form, neptun_code: event.target.value.toUpperCase() })} /></label><label>Lecture grade<select value={form.lecture_grade} onChange={(event) => setForm({ ...form, lecture_grade: event.target.value })}>{["1", "2", "3", "4", "5", "NOT_YET_GRADED"].map((grade) => <option key={grade} value={grade}>{grade === "NOT_YET_GRADED" ? "Not Yet Graded" : grade}</option>)}</select></label><label>Practice grade<select value={form.practice_grade} onChange={(event) => setForm({ ...form, practice_grade: event.target.value })}>{["1", "2", "3", "4", "5", "NOT_YET_GRADED"].map((grade) => <option key={grade} value={grade}>{grade === "NOT_YET_GRADED" ? "Not Yet Graded" : grade}</option>)}</select></label><label>Practice teacher<input required value={form.practice_teacher} onChange={(event) => setForm({ ...form, practice_teacher: event.target.value })} /></label><label>Motivation<textarea required minLength={10} value={form.motivation} onChange={(event) => setForm({ ...form, motivation: event.target.value })} /></label><label>Weekly availability (hours)<input required type="number" min="0" max="168" value={form.weekly_availability} onChange={(event) => setForm({ ...form, weekly_availability: Number(event.target.value) })} /></label><fieldset><legend>Preferred responsibilities *</legend>{responsibilities.map((item) => <label key={item}><input type="checkbox" checked={form.preferred_responsibilities.includes(item)} onChange={(event) => setForm({ ...form, preferred_responsibilities: event.target.checked ? [...form.preferred_responsibilities, item] : form.preferred_responsibilities.filter((value) => value !== item) })} /> {item}</label>)}</fieldset><label>Relevant experience<textarea value={form.relevant_experience ?? ""} onChange={(event) => setForm({ ...form, relevant_experience: event.target.value || null })} /></label><label>Additional comments<textarea value={form.additional_comments ?? ""} onChange={(event) => setForm({ ...form, additional_comments: event.target.value || null })} /></label>
+    {selected.questionnaire.length > 0 && <><h3>Additional questions</h3>{selected.questionnaire.map((question) => question.id && <CustomQuestion key={question.id} question={question} value={form.custom_answers[question.id]} setValue={(value) => setAnswer(question.id!, value)} />)}</>}
+    <div className="quiz-actions"><button className="button button-primary">Submit application</button><button type="button" className="button button-secondary" onClick={() => setSelected(null)}>Cancel</button></div></form>}
   </>;
 }

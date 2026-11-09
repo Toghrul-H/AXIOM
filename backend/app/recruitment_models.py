@@ -1,6 +1,6 @@
 """Private demonstrator-recruitment records."""
 from datetime import datetime
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -45,6 +45,39 @@ class DemonstratorApplication(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     decision_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True)
+    # M13C fields stay nullable for applications submitted before the questionnaire existed.
+    lecture_grade: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    practice_grade: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    weekly_availability: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    preferred_responsibilities: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+
+
+class DemonstratorQuestion(Base):
+    """Lecturer-defined question for one vacancy; immutable after first application."""
+
+    __tablename__ = "demonstrator_questions"
+    __table_args__ = (UniqueConstraint("vacancy_id", "display_order", name="uq_demonstrator_question_order"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vacancy_id: Mapped[int] = mapped_column(ForeignKey("demonstrator_vacancies.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    question_type: Mapped[str] = mapped_column(String(24))
+    required: Mapped[bool] = mapped_column(default=False, server_default="false")
+    options: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer)
+
+
+class DemonstratorApplicationAnswer(Base):
+    """Immutable custom-answer snapshot retaining the wording shown to a student."""
+
+    __tablename__ = "demonstrator_application_answers"
+    __table_args__ = (UniqueConstraint("application_id", "question_id", name="uq_demonstrator_application_answer"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("demonstrator_applications.id", ondelete="CASCADE"), index=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("demonstrator_questions.id", ondelete="RESTRICT"), index=True)
+    question_title: Mapped[str] = mapped_column(Text)
+    question_type: Mapped[str] = mapped_column(String(24))
+    answer: Mapped[object] = mapped_column(JSON)
+    display_order: Mapped[int] = mapped_column(Integer)
 
 
 class RecruitmentNotification(Base):
