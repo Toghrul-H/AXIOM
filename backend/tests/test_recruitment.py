@@ -7,7 +7,8 @@ import asyncio
 
 from openpyxl import load_workbook
 from pydantic import ValidationError
-from sqlalchemy import create_engine, select
+from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.auth_models import User
@@ -19,7 +20,23 @@ from app.routers.recruitment import application_open, application_read, apply, e
 
 def setup():
     engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
+    # Build an isolated metadata clone for SQLite. PostgreSQL needs these two
+    # deferred uniqueness constraints for position swaps; SQLite cannot parse
+    # them, so only their test-copy omits the PostgreSQL-specific modifiers.
+    metadata = MetaData()
+    for table in Base.metadata.sorted_tables:
+        clone = table.to_metadata(metadata)
+        for column in clone.columns:
+            if isinstance(column.type, JSONB):
+                column.type = JSON()
+        for constraint in clone.constraints:
+            if isinstance(constraint, UniqueConstraint) and constraint.name in {
+                "uq_question_options_position",
+                "uq_quiz_questions_position",
+            }:
+                constraint.deferrable = None
+                constraint.initially = None
+    metadata.create_all(engine)
     session = Session(engine)
     lecturer = User(email="lecturer@example.com", password_hash="x", role="LECTURER", email_verified=True)
     student = User(email="student@example.com", password_hash="x", role="STUDENT", email_verified=True)
