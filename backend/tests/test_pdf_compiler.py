@@ -15,6 +15,10 @@ def configured(monkeypatch):
 def test_fixed_unicode_mapping():
     assert compiler.compiler_source('őűŐŰ–—') == r'\H{o}\H{u}\H{O}\H{U}\textendash{}\textemdash{}'
 
+def test_dockerfile_sets_tectonic_cache_home():
+    dockerfile = Path(__file__).resolve().parents[1] / 'Dockerfile'
+    assert 'XDG_CACHE_HOME=/opt/tectonic-cache' in dockerfile.read_text(encoding='utf-8')
+
 @pytest.mark.parametrize('mode,status',[('success',200),('failure',422),('timeout',504),('missing',422),('large',413),('glyph',422),('invalid',502),('unavailable',503)])
 def test_compiler_bounds_cleanup(configured,monkeypatch,mode,status):
     paths=[]
