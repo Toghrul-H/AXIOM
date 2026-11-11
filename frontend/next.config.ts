@@ -30,14 +30,6 @@ const nextConfig: NextConfig = {
         source: "/api/student/:path*",
         destination: `${apiUrl.replace(/\/$/, "")}/student/:path*`,
       },
-      {
-        source: "/api/question-metadata",
-        destination: `${apiUrl.replace(/\/$/, "")}/question-metadata`,
-      },
-      {
-        source: "/api/questions/:path*",
-        destination: `${apiUrl.replace(/\/$/, "")}/questions/:path*`,
-      },
     ];
   },
 };
