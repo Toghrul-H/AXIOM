@@ -8,15 +8,24 @@ and then reuse the same closed-batch importer logic.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from app.importers.dmi_verified import ImportItem, _question_matches
+from app.models import Question
 
 
 INSPECTION_ACKNOWLEDGEMENT = "AXIOM_PRODUCTION_IMPORT_INSPECTION_APPROVED"
 WRITE_ACKNOWLEDGEMENT = "AXIOM_PRODUCTION_IMPORT_WRITE_APPROVED"
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+REQUIRED_REVISION = "0017"
+PRODUCTION_IMPORT_DATABASE_URL_ENV = "AXIOM_PRODUCTION_IMPORT_DATABASE_URL"
 
 
 @dataclass(frozen=True)
@@ -25,6 +34,16 @@ class BackupEvidence:
     database: str
     recovery_point: str
     verified_by: str
+
+
+def get_production_import_engine() -> Engine:
+    """Create a runner-only engine from a separately provisioned DB credential."""
+    database_url = os.environ.get(PRODUCTION_IMPORT_DATABASE_URL_ENV, "").strip()
+    if not database_url:
+        raise RuntimeError(
+            f"Production import requires {PRODUCTION_IMPORT_DATABASE_URL_ENV} to be configured."
+        )
+    return create_engine(database_url, pool_pre_ping=True)
 
 
 def load_backup_evidence(path: Path) -> BackupEvidence:
@@ -60,3 +79,23 @@ def authorize_production_import(
         raise RuntimeError("Backup evidence does not match the selected database target.")
     if apply and write_acknowledgement != WRITE_ACKNOWLEDGEMENT:
         raise RuntimeError("Production writes require the explicit write acknowledgement.")
+
+
+def require_production_revision(session: Session) -> None:
+    """Require the exact reviewed schema revision without running migrations."""
+    try:
+        revisions = list(session.scalars(text("SELECT version_num FROM alembic_version")))
+    except Exception as exc:
+        raise RuntimeError("Production import could not verify the Alembic revision.") from exc
+    if revisions != [REQUIRED_REVISION]:
+        raise RuntimeError("Production import requires Alembic revision 0017 exactly.")
+
+
+def verify_persisted_items(session: Session, items: list[ImportItem]) -> None:
+    """Validate the full imported set before its transaction commits."""
+    expected = {item.external_source_id: item for item in items}
+    stored = list(session.scalars(select(Question).where(Question.external_source_id.in_(expected))))
+    if len(stored) != len(expected) or {question.external_source_id for question in stored} != set(expected):
+        raise RuntimeError("Post-import verification found missing or duplicate external source identifiers.")
+    if any(not _question_matches(question, expected[question.external_source_id]) for question in stored):
+        raise RuntimeError("Post-import verification found content different from the verified artifacts.")

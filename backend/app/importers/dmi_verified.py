@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 import re
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
@@ -537,7 +537,14 @@ def plan_import(session: Session, items: Iterable[ImportItem], *, dataset: str, 
     return report, create
 
 
-def import_items(session: Session, items: Iterable[ImportItem], *, dataset: str, dry_run: bool = True) -> ImportReport:
+def import_items(
+    session: Session,
+    items: Iterable[ImportItem],
+    *,
+    dataset: str,
+    dry_run: bool = True,
+    post_write_check: Callable[[Session, list[ImportItem]], None] | None = None,
+) -> ImportReport:
     """Dry-run or atomically create a batch; never updates an existing question."""
     report, create = plan_import(session, items, dataset=dataset, dry_run=dry_run)
     if report.rejected or report.conflicts:
@@ -558,6 +565,9 @@ def import_items(session: Session, items: Iterable[ImportItem], *, dataset: str,
                     question_text=item.question_text, expected_answer=item.expected_answer,
                     correct_boolean=None, explanation=item.explanation, is_active=True,
                 ))
+            session.flush()
+            if post_write_check is not None:
+                post_write_check(session, items)
         report.created = len(create)
     except Exception:
         session.rollback()
