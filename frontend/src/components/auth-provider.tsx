@@ -120,6 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ((path.startsWith("/teacher/users") ||
         path.startsWith("/teacher/assessments") ||
         path.startsWith("/teacher/exams") ||
+        path.startsWith("/teacher/practice-sheets") ||
         path.startsWith("/teacher/recruitment")) &&
         !["LECTURER", "ADMIN"].includes(user.role));
     content = (

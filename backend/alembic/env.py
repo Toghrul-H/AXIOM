@@ -8,6 +8,7 @@ from app.auth_models import User, AuthSession
 from app.assessment_models import AssessmentConfiguration
 from app.recruitment_models import DemonstratorVacancy
 from app.exam_models import Exam
+from app.practice_sheet_models import PracticeSheet
 
 target_metadata = Base.metadata
 

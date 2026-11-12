@@ -75,7 +75,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [open]);
   useEffect(() => {
     if (!user) return;
-    void authRequest<{ id: number; title: string; body: string; link: string }[]>("/recruitment/notifications/recruitment")
+    void authRequest<
+      { id: number; title: string; body: string; link: string }[]
+    >("/recruitment/notifications/recruitment")
       .then(setNotifications)
       .catch(() => setNotifications([]));
   }, [user]);
@@ -97,7 +99,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/student/practice", label: "Practice", icon: Shapes },
         { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
         { href: "/student/history", label: "History", icon: BookOpen },
-        { href: "/student/demonstrator-opportunities", label: "Demonstrator Opportunities", icon: GraduationCap },
+        {
+          href: "/student/demonstrator-opportunities",
+          label: "Demonstrator Opportunities",
+          icon: GraduationCap,
+        },
         {
           href: "/student/progress",
           label: "Progress",
@@ -111,9 +117,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       icon: GraduationCap,
     });
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
-    links.push({ href: "/teacher/recruitment", label: "Demonstrator Recruitment", icon: GraduationCap });
+    links.push({
+      href: "/teacher/recruitment",
+      label: "Demonstrator Recruitment",
+      icon: GraduationCap,
+    });
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({ href: "/teacher/exams", label: "Exam Builder", icon: Shapes });
+  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+    links.push({
+      href: "/teacher/practice-sheets",
+      label: "Practice Sheets",
+      icon: Shapes,
+    });
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/assessments",
@@ -125,6 +141,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? "Assessment Documents"
       : undefined) ??
     (path.startsWith("/teacher/exams") ? "Exam Builder" : undefined) ??
+    (path.startsWith("/teacher/practice-sheets")
+      ? "Practice Sheets"
+      : undefined) ??
     (path.startsWith("/teacher/grading/") ? "Manual Grading" : undefined) ??
     links.find((item) => item.href === path)?.label ??
     futureTools.find((item) => path === `/teacher/tools/${item.slug}`)?.title ??
@@ -275,9 +294,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </summary>
               <div className="account-menu">
                 <strong>Notifications</strong>
-                {notifications.length ? notifications.map((item) => (
-                  <Link key={item.id} href={item.link}><strong>{item.title}</strong><p>{item.body}</p></Link>
-                )) : <p>No new notifications</p>}
+                {notifications.length ? (
+                  notifications.map((item) => (
+                    <Link key={item.id} href={item.link}>
+                      <strong>{item.title}</strong>
+                      <p>{item.body}</p>
+                    </Link>
+                  ))
+                ) : (
+                  <p>No new notifications</p>
+                )}
               </div>
             </details>
             <details className="account-control">
@@ -294,7 +320,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <strong>{user?.email}</strong>
                 <span className="role-chip">{user?.role}</span>
                 {user?.role === "STUDENT" && (
-                  <Link className="button button-secondary" href="/student/demonstrator-opportunities">Demonstrator Applications</Link>
+                  <Link
+                    className="button button-secondary"
+                    href="/student/demonstrator-opportunities"
+                  >
+                    Demonstrator Applications
+                  </Link>
                 )}
                 <button
                   className="button button-secondary"

@@ -1,10 +1,5 @@
 export const futureTools = [
   {
-    slug: "practice-sheets",
-    title: "Practice Sheet Generator",
-    description: "Prepare focused practice sheets for your course topics.",
-  },
-  {
     slug: "latex-pdf",
     title: "LaTeX / PDF Tools",
     description:
