@@ -1,10 +1,5 @@
 export const futureTools = [
   {
-    slug: "exam-builder",
-    title: "Exam Builder",
-    description: "Build structured assessments from your course question bank.",
-  },
-  {
     slug: "practice-sheets",
     title: "Practice Sheet Generator",
     description: "Prepare focused practice sheets for your course topics.",

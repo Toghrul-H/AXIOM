@@ -7,6 +7,7 @@ from app.quiz_models import Quiz
 from app.auth_models import User, AuthSession
 from app.assessment_models import AssessmentConfiguration
 from app.recruitment_models import DemonstratorVacancy
+from app.exam_models import Exam
 
 target_metadata = Base.metadata
 

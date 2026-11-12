@@ -20,6 +20,11 @@ DUMMY_HASH=passwords.hash(token_urlsafe(32))
 COOKIE='dmi_session'
 
 
+def utc(value: datetime) -> datetime:
+    """Normalize SQLite's timezone-naive DATETIME reads to their UTC contract."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
 def digest(token:str)->str:
     return sha256(token.encode()).hexdigest()
 
@@ -47,7 +52,7 @@ def get_current_user(request:Request,session:Annotated[Session,Depends(get_sessi
     if not token or len(token)>256:
         raise HTTPException(401,'Sign in to continue')
     auth=session.get(AuthSession,digest(token))
-    if auth is None or auth.expires_at<=datetime.now(timezone.utc):
+    if auth is None or utc(auth.expires_at)<=datetime.now(timezone.utc):
         raise HTTPException(401,'Session expired. Sign in again')
     user=session.get(User,auth.user_id)
     if user is None or not user.is_active or user.is_legacy or not user.email_verified:

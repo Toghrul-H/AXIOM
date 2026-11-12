@@ -28,6 +28,8 @@ from app.routers.assessments import router as assessments_router
 app.include_router(assessments_router)
 from app.routers.recruitment import router as recruitment_router
 app.include_router(recruitment_router)
+from app.routers.exams import router as exams_router
+app.include_router(exams_router)
 
 
 @app.middleware("http")
