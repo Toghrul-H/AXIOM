@@ -66,7 +66,10 @@ export async function downloadExamPdf(id: number, kind: "exam" | "answer-key") {
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = `axiom-exam-${id}-${kind}.pdf`;
+  link.download =
+    response.headers
+      .get("content-disposition")
+      ?.match(/filename="?([^";]+)"?/i)?.[1] ?? `axiom-exam-${id}-${kind}.pdf`;
   try {
     document.body.appendChild(link);
     link.click();

@@ -397,6 +397,12 @@ export function PracticeSheetBuilder() {
   }
   async function download(variantId: number, kind: "sheet" | "answer-key") {
     if (draft.id === null || downloading) return;
+    if (dirty) {
+      setError(
+        "You have unsaved changes. Please save before downloading a PDF.",
+      );
+      return;
+    }
     const key = `${variantId}:${kind}`;
     setDownloading(key);
     setError("");
@@ -993,6 +999,19 @@ export function PracticeSheetBuilder() {
                   )}
                 </section>
               )}
+              {draft.id !== null && draft.variants.length === 0 && (
+                <section
+                  className="panel"
+                  aria-label="Practice sheet downloads"
+                >
+                  <h3>PDF downloads</h3>
+                  <p className="field-hint">
+                    {dirty
+                      ? "Save this draft before generating variants and downloading PDFs."
+                      : "Generate at least one variant to enable Student PDF and Answer Key downloads."}
+                  </p>
+                </section>
+              )}
               {draft.variants.length > 0 && (
                 <section
                   className="panel"
@@ -1015,11 +1034,11 @@ export function PracticeSheetBuilder() {
                             type="button"
                             className="button button-secondary"
                             onClick={() => void download(variant.id, "sheet")}
-                            disabled={downloading !== null}
+                            disabled={downloading !== null || dirty}
                           >
                             {downloading === `${variant.id}:sheet`
                               ? "Generating…"
-                              : "Download Sheet PDF"}
+                              : "Download Student PDF"}
                           </button>
                           <button
                             type="button"
@@ -1027,7 +1046,7 @@ export function PracticeSheetBuilder() {
                             onClick={() =>
                               void download(variant.id, "answer-key")
                             }
-                            disabled={downloading !== null}
+                            disabled={downloading !== null || dirty}
                           >
                             {downloading === `${variant.id}:answer-key`
                               ? "Generating…"
@@ -1037,6 +1056,12 @@ export function PracticeSheetBuilder() {
                       </li>
                     ))}
                   </ul>
+                  {dirty && (
+                    <p className="field-hint">
+                      Save changes before downloading so the PDF uses the
+                      current document settings.
+                    </p>
+                  )}
                 </section>
               )}
             </form>

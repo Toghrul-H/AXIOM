@@ -250,7 +250,7 @@ def test_variant_documents_apply_validated_document_settings(setup):
     student = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.SHEET)
     key = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.ANSWER_KEY)
     assert r"ELTE\_50\%" in student and r"DMI \& Logic" in student
-    assert r"\textit{Instructor:} Dr. Example" in student and "2026-11-13" in student
+    assert "Instructor: Dr. Example" in student and "2026-11-13" in student
     assert r"margin=28mm" in student and r"\setlength{\parskip}{12pt}" in student
     assert r"\item[]" in student and r"(3 points)" not in student
     assert r"\clearpage" in student and r"\vspace{45mm}\hrule" in student

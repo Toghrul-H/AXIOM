@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 import {
@@ -18,6 +18,7 @@ import { orderedTopics, useMetadata } from "@/lib/use-metadata";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import { QuestionFilters } from "./question-filters";
+import { MathText } from "./math-text";
 
 const PAGE_SIZE = 20;
 const emptyDraft = () => ({
@@ -43,6 +44,10 @@ export function ExamBuilder() {
   const [draft, setDraft] = useState(emptyDraft);
   const [savedSignature, setSavedSignature] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [previewQuestions, setPreviewQuestions] = useState<
+    Map<number, Question>
+  >(() => new Map());
+  const requestedPreviewQuestionIds = useRef(new Set<number>());
   const [filters, setFilters] = useState<Filters>({});
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -86,6 +91,11 @@ export function ExamBuilder() {
       .list(offset, PAGE_SIZE, controller.signal, filters)
       .then((page) => {
         setQuestions(page.items);
+        setPreviewQuestions((current) => {
+          const next = new Map(current);
+          page.items.forEach((question) => next.set(question.id, question));
+          return next;
+        });
         setTotal(page.total);
         setLoadingQuestions(false);
       })
@@ -97,6 +107,33 @@ export function ExamBuilder() {
       });
     return () => controller.abort();
   }, [filters, offset]);
+
+  useEffect(() => {
+    const missing = draft.entries
+      .map((entry) => entry.question_id)
+      .filter(
+        (id) =>
+          !previewQuestions.has(id) &&
+          !requestedPreviewQuestionIds.current.has(id),
+      );
+    if (!missing.length) return;
+    missing.forEach((id) => requestedPreviewQuestionIds.current.add(id));
+    const controller = new AbortController();
+    void Promise.all(
+      missing.map((id) => questionsApi.get(String(id), controller.signal)),
+    )
+      .then((items) => {
+        setPreviewQuestions((current) => {
+          const next = new Map(current);
+          items.forEach((question) => next.set(question.id, question));
+          return next;
+        });
+      })
+      .catch(() => {
+        missing.forEach((id) => requestedPreviewQuestionIds.current.delete(id));
+      });
+    return () => controller.abort();
+  }, [draft.entries, previewQuestions]);
 
   const questionById = useMemo(
     () => new Map(questions.map((question) => [question.id, question])),
@@ -144,6 +181,9 @@ export function ExamBuilder() {
       draft.entries.some((entry) => entry.question_id === question.id)
     )
       return;
+    setPreviewQuestions((current) =>
+      new Map(current).set(question.id, question),
+    );
     replaceEntries([
       ...draft.entries,
       { question_id: question.id, points: 1, position: draft.entries.length },
@@ -247,6 +287,12 @@ export function ExamBuilder() {
   }
   async function download(kind: "exam" | "answer-key") {
     if (draft.id === null || downloading) return;
+    if (dirty) {
+      setError(
+        "You have unsaved changes. Please save before downloading a PDF.",
+      );
+      return;
+    }
     setDownloading(kind);
     setError("");
     try {
@@ -357,269 +403,349 @@ export function ExamBuilder() {
           </div>
         )}
       </section>
-      <section className="exam-builder-grid">
-        <form
-          className="panel quiz-panel exam-editor"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <div className="panel-heading">
-            <div>
-              <h2>
-                {draft.id === null
-                  ? "New exam"
-                  : readOnly
-                    ? "Finalized exam"
-                    : "Edit draft"}
-              </h2>
-              <p>
-                {readOnly
-                  ? "This saved composition is read-only."
-                  : "Set the assessment details and question order."}
-              </p>
-            </div>
-            {draft.id !== null && (
-              <div className="exam-document-actions">
-                <span className={`exam-status ${draft.status}`}>
-                  {draft.status}
-                </span>
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  onClick={() => void download("exam")}
-                  disabled={downloading !== null}
-                >
-                  {downloading === "exam"
-                    ? "Generating exam…"
-                    : "Download Exam PDF"}
-                </button>
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  onClick={() => void download("answer-key")}
-                  disabled={downloading !== null}
-                >
-                  {downloading === "answer-key"
-                    ? "Generating key…"
-                    : "Download Answer Key PDF"}
-                </button>
+      <section className="exam-builder-workspace">
+        <section className="exam-builder-grid">
+          <form
+            className="panel quiz-panel exam-editor"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
+            }}
+          >
+            <div className="panel-heading">
+              <div>
+                <h2>
+                  {draft.id === null
+                    ? "New exam"
+                    : readOnly
+                      ? "Finalized exam"
+                      : "Edit draft"}
+                </h2>
+                <p>
+                  {readOnly
+                    ? "This saved composition is read-only."
+                    : "Set the assessment details and question order."}
+                </p>
               </div>
-            )}
-          </div>
-          <fieldset disabled={busy || readOnly}>
-            <label className="field">
-              Exam title
-              <input
-                required
-                maxLength={200}
-                value={draft.title}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label className="field">
-              Instructions
-              <textarea
-                maxLength={20000}
-                value={draft.instructions}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    instructions: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <div className="exam-total">
-              <span>{draft.entries.length} selected</span>
-              <strong>{totalPoints} total points</strong>
-            </div>
-            <h3>Questions in print order</h3>
-            {draft.entries.length === 0 ? (
-              <p className="field-hint">
-                Add active questions from the filtered Question Bank.
-              </p>
-            ) : (
-              <ol className="quiz-composition">
-                {draft.entries.map((entry, index) => (
-                  <li key={entry.question_id}>
-                    <span>
-                      #{entry.question_id} ·{" "}
-                      {questionById.get(entry.question_id)?.title ??
-                        "Saved question"}
-                    </span>
-                    <label>
-                      Points
-                      <input
-                        aria-label={`Points for question ${entry.question_id}`}
-                        type="number"
-                        min={1}
-                        max={1000}
-                        required
-                        value={entry.points}
-                        onChange={(event) =>
-                          replaceEntries(
-                            draft.entries.map((item, itemIndex) =>
-                              itemIndex === index
-                                ? {
-                                    ...item,
-                                    points: Number(event.target.value),
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      disabled={index === 0}
-                      onClick={() => move(index, -1)}
-                    >
-                      Up
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      disabled={index === draft.entries.length - 1}
-                      onClick={() => move(index, 1)}
-                    >
-                      Down
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      onClick={() =>
-                        replaceEntries(
-                          draft.entries.filter(
-                            (_, itemIndex) => itemIndex !== index,
-                          ),
-                        )
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {!readOnly && (
-              <div className="exam-actions">
-                <button className="button button-primary" type="submit">
-                  {busy ? "Saving…" : "Save draft"}
-                </button>
-                {draft.id !== null && (
+              {draft.id !== null && (
+                <div className="exam-document-actions">
+                  <span className={`exam-status ${draft.status}`}>
+                    {draft.status}
+                  </span>
                   <button
                     className="button button-secondary"
                     type="button"
-                    onClick={() => setConfirmingFinalization(true)}
-                    disabled={draft.entries.length === 0 || dirty}
+                    onClick={() => void download("exam")}
+                    disabled={downloading !== null || dirty}
                   >
-                    Finalize exam
+                    {downloading === "exam"
+                      ? "Generating exam…"
+                      : "Download Exam PDF"}
                   </button>
-                )}
-                {dirty && (
-                  <span className="field-hint">
-                    Save changes before finalizing.
-                  </span>
-                )}
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    onClick={() => void download("answer-key")}
+                    disabled={downloading !== null || dirty}
+                  >
+                    {downloading === "answer-key"
+                      ? "Generating key…"
+                      : "Download Answer Key PDF"}
+                  </button>
+                </div>
+              )}
+            </div>
+            {dirty && (
+              <p className="field-hint">
+                Save changes before downloading so the PDF matches this draft.
+              </p>
+            )}
+            <fieldset disabled={busy || readOnly}>
+              <label className="field">
+                Exam title
+                <input
+                  required
+                  maxLength={200}
+                  value={draft.title}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                Instructions
+                <textarea
+                  maxLength={20000}
+                  value={draft.instructions}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      instructions: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <div className="exam-total">
+                <span>{draft.entries.length} selected</span>
+                <strong>{totalPoints} total points</strong>
+              </div>
+              <h3>Questions in print order</h3>
+              {draft.entries.length === 0 ? (
+                <p className="field-hint">
+                  Add active questions from the filtered Question Bank.
+                </p>
+              ) : (
+                <ol className="quiz-composition">
+                  {draft.entries.map((entry, index) => (
+                    <li key={entry.question_id}>
+                      <span>
+                        #{entry.question_id} ·{" "}
+                        {questionById.get(entry.question_id)?.title ??
+                          "Saved question"}
+                      </span>
+                      <label>
+                        Points
+                        <input
+                          aria-label={`Points for question ${entry.question_id}`}
+                          type="number"
+                          min={1}
+                          max={1000}
+                          required
+                          value={entry.points}
+                          onChange={(event) =>
+                            replaceEntries(
+                              draft.entries.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      points: Number(event.target.value),
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="button button-quiet"
+                        disabled={index === 0}
+                        onClick={() => move(index, -1)}
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-quiet"
+                        disabled={index === draft.entries.length - 1}
+                        onClick={() => move(index, 1)}
+                      >
+                        Down
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-quiet"
+                        onClick={() =>
+                          replaceEntries(
+                            draft.entries.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {!readOnly && (
+                <div className="exam-actions">
+                  <button className="button button-primary" type="submit">
+                    {busy ? "Saving…" : "Save draft"}
+                  </button>
+                  {draft.id !== null && (
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      onClick={() => setConfirmingFinalization(true)}
+                      disabled={draft.entries.length === 0 || dirty}
+                    >
+                      Finalize exam
+                    </button>
+                  )}
+                  {dirty && (
+                    <span className="field-hint">
+                      Save changes before finalizing.
+                    </span>
+                  )}
+                </div>
+              )}
+            </fieldset>
+          </form>
+          <aside className="exam-picker">
+            <h2>Add questions</h2>
+            {metadataError && (
+              <p className="error-message" role="alert">
+                Could not load filters: {metadataError}
+              </p>
+            )}
+            {metadata && (
+              <QuestionFilters
+                metadata={metadata}
+                onApply={(next) => {
+                  setLoadingQuestions(true);
+                  setFilters(next);
+                  setOffset(0);
+                }}
+              />
+            )}
+            {readOnly ? (
+              <p className="field-hint">Finalized exams cannot be changed.</p>
+            ) : loadingQuestions ? (
+              <p role="status">Loading matching questions…</p>
+            ) : groups.length === 0 ? (
+              <p>No questions match these filters.</p>
+            ) : (
+              <div className="quiz-bank-picker">
+                {groups.map((group) => (
+                  <details className="topic-accordion" key={group.label} open>
+                    <summary>
+                      <span>{group.label}</span>
+                      <span className="topic-group-count">
+                        {group.items.length}
+                      </span>
+                      <ChevronDown size={17} />
+                    </summary>
+                    <div className="quiz-topic-items">
+                      {group.items.map((question) => (
+                        <div key={question.id}>
+                          <span>
+                            #{question.id} ·{" "}
+                            {question.title ?? question.question_text}
+                            {!question.is_active ? " (inactive)" : ""}
+                          </span>
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            disabled={
+                              !question.is_active ||
+                              draft.entries.some(
+                                (entry) => entry.question_id === question.id,
+                              ) ||
+                              draft.entries.length >= 100
+                            }
+                            onClick={() => add(question)}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
               </div>
             )}
-          </fieldset>
-        </form>
-        <aside className="exam-picker">
-          <h2>Add questions</h2>
-          {metadataError && (
-            <p className="error-message" role="alert">
-              Could not load filters: {metadataError}
-            </p>
-          )}
-          {metadata && (
-            <QuestionFilters
-              metadata={metadata}
-              onApply={(next) => {
-                setLoadingQuestions(true);
-                setFilters(next);
-                setOffset(0);
-              }}
-            />
-          )}
-          {readOnly ? (
-            <p className="field-hint">Finalized exams cannot be changed.</p>
-          ) : loadingQuestions ? (
-            <p role="status">Loading matching questions…</p>
-          ) : groups.length === 0 ? (
-            <p>No questions match these filters.</p>
-          ) : (
-            <div className="quiz-bank-picker">
-              {groups.map((group) => (
-                <details className="topic-accordion" key={group.label} open>
-                  <summary>
-                    <span>{group.label}</span>
-                    <span className="topic-group-count">
-                      {group.items.length}
-                    </span>
-                    <ChevronDown size={17} />
-                  </summary>
-                  <div className="quiz-topic-items">
-                    {group.items.map((question) => (
-                      <div key={question.id}>
-                        <span>
-                          #{question.id} ·{" "}
-                          {question.title ?? question.question_text}
-                          {!question.is_active ? " (inactive)" : ""}
-                        </span>
-                        <button
-                          type="button"
-                          className="button button-secondary"
-                          disabled={
-                            !question.is_active ||
-                            draft.entries.some(
-                              (entry) => entry.question_id === question.id,
-                            ) ||
-                            draft.entries.length >= 100
-                          }
-                          onClick={() => add(question)}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ))}
+            <div className="quiz-actions">
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={offset === 0 || loadingQuestions}
+                onClick={() => {
+                  setLoadingQuestions(true);
+                  setOffset(Math.max(0, offset - PAGE_SIZE));
+                }}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={offset + PAGE_SIZE >= total || loadingQuestions}
+                onClick={() => {
+                  setLoadingQuestions(true);
+                  setOffset(offset + PAGE_SIZE);
+                }}
+              >
+                Next
+              </button>
             </div>
-          )}
-          <div className="quiz-actions">
-            <button
-              type="button"
-              className="button button-secondary"
-              disabled={offset === 0 || loadingQuestions}
-              onClick={() => {
-                setLoadingQuestions(true);
-                setOffset(Math.max(0, offset - PAGE_SIZE));
-              }}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              className="button button-secondary"
-              disabled={offset + PAGE_SIZE >= total || loadingQuestions}
-              onClick={() => {
-                setLoadingQuestions(true);
-                setOffset(offset + PAGE_SIZE);
-              }}
-            >
-              Next
-            </button>
+          </aside>
+        </section>
+        <aside className="exam-preview-pane" aria-label="Live exam preview">
+          <header className="exam-preview-toolbar">
+            <h2>Draft Preview</h2>
+            <p className="draft-save-state" role="status">
+              {readOnly
+                ? "Finalized exam — read-only preview"
+                : dirty
+                  ? "Unsaved changes — preview only"
+                  : "Saved draft"}
+            </p>
+            <p>PDF output remains authoritative.</p>
+          </header>
+          <div
+            className="exam-preview-scroll"
+            tabIndex={0}
+            aria-label="Scrollable exam preview"
+          >
+            <article className="draft-paper exam-paper">
+              <header className="exam-paper-heading">
+                <strong>AXIOM</strong>
+                <h2>Discrete Mathematics I</h2>
+                <h3>{draft.title.trim() || "Untitled Exam"}</h3>
+              </header>
+              <p className="practice-sheet-identity">
+                <strong>Name:</strong> ____________________{" "}
+                <strong>Neptun code:</strong> ____________{" "}
+                <strong>Date:</strong> ____________
+              </p>
+              <p className="exam-preview-total">
+                <strong>Total available points:</strong> {totalPoints}
+              </p>
+              {draft.instructions.trim() && (
+                <p className="draft-paragraph">
+                  <MathText text={draft.instructions} />
+                </p>
+              )}
+              {draft.entries.length === 0 ? (
+                <p className="field-hint">
+                  Add questions to see the printable exam draft.
+                </p>
+              ) : (
+                <ol className="exam-preview-questions">
+                  {draft.entries.map((entry, index) => {
+                    const question = previewQuestions.get(entry.question_id);
+                    return (
+                      <li key={entry.question_id}>
+                        <div className="practice-sheet-question-heading">
+                          <strong>Question {index + 1}</strong>
+                          <span>{entry.points} points</span>
+                        </div>
+                        {question ? (
+                          <MathText text={question.question_text} />
+                        ) : (
+                          <span className="field-hint">
+                            Loading question {entry.question_id}…
+                          </span>
+                        )}
+                        <div
+                          className={
+                            question?.response_type === "FREE_RESPONSE"
+                              ? "exam-preview-answer-space exam-preview-answer-space-large"
+                              : "exam-preview-answer-space"
+                          }
+                          aria-hidden="true"
+                        />
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </article>
           </div>
         </aside>
       </section>

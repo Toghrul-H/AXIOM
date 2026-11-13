@@ -88,7 +88,7 @@ def _blocks(
         if item["question_id"] in settings.questions.page_break_before_question_ids:
             lines.append(r"\clearpage")
         points = (
-            f" \textbf{{({item['points']} points)}}"
+            rf" \textbf{{({item['points']} points)}}"
             if settings.questions.show_points and item["points"] is not None
             else ""
         )
@@ -105,9 +105,9 @@ def _blocks(
 def _header_details(settings: PracticeSheetDocumentSettings) -> str:
     details: list[str] = []
     if settings.header.instructor_name:
-        details.append(r"\textit{Instructor:} " + _plain(settings.header.instructor_name))
+        details.append("Instructor: " + _plain(settings.header.instructor_name))
     if settings.header.document_date:
-        details.append(r"\textit{Date:} " + _plain(settings.header.document_date.isoformat()))
+        details.append("Date: " + _plain(settings.header.document_date.isoformat()))
     return (r"\\" + r"\\".join(details)) if details else ""
 
 

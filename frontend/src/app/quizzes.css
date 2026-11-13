@@ -183,6 +183,81 @@
   margin-top: 24px;
   border-left: 4px solid var(--gold);
 }
+.exam-builder-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  gap: 24px;
+  align-items: start;
+  margin-top: 24px;
+}
+.exam-builder-workspace .exam-builder-grid {
+  margin-top: 0;
+}
+.exam-preview-pane {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  max-height: calc(100dvh - 100px);
+  overflow: hidden;
+  border: 1px solid var(--champagne);
+  background: var(--ivory);
+}
+.exam-preview-toolbar {
+  padding: 16px;
+  border-bottom: 1px solid var(--champagne);
+  background: var(--warm-beige);
+}
+.exam-preview-toolbar h2,
+.exam-preview-toolbar p {
+  margin: 0;
+}
+.exam-preview-toolbar p + p {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.exam-preview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+.exam-paper {
+  width: min(100%, 210mm);
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 36px);
+  box-shadow: 0 2px 12px rgb(21 43 73 / 18%);
+}
+.exam-paper-heading {
+  margin-bottom: 22px;
+  text-align: center;
+}
+.exam-paper-heading h2,
+.exam-paper-heading h3 {
+  margin: 6px 0;
+}
+.exam-preview-total {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--champagne);
+}
+.exam-preview-questions {
+  padding-left: 1.4em;
+}
+.exam-preview-questions > li {
+  break-inside: avoid;
+  margin: 20px 0;
+}
+.exam-preview-answer-space {
+  min-height: 34px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--champagne);
+}
+.exam-preview-answer-space-large {
+  min-height: 104px;
+}
 .practice-sheet-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
@@ -376,18 +451,22 @@
   opacity: 0.55;
 }
 @media (max-width: 1280px) {
+  .exam-builder-workspace,
   .practice-sheet-workspace {
     grid-template-columns: 1fr;
   }
+  .exam-preview-pane,
   .practice-sheet-preview-pane {
     position: static;
     max-height: 75dvh;
   }
 }
 @media (max-width: 560px) {
+  .exam-preview-scroll,
   .practice-sheet-preview-scroll {
     padding: 8px;
   }
+  .exam-paper,
   .practice-sheet-paper {
     min-height: 0;
     padding: 18px;

@@ -138,7 +138,11 @@ export async function downloadPracticeSheetPdf(
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = `axiom-practice-sheet-${sheetId}-${variantId}-${kind}.pdf`;
+  link.download =
+    response.headers
+      .get("content-disposition")
+      ?.match(/filename="?([^";]+)"?/i)?.[1] ??
+    `axiom-practice-sheet-${sheetId}-${variantId}-${kind}.pdf`;
   try {
     document.body.appendChild(link);
     link.click();

@@ -16,9 +16,23 @@ from pathlib import Path
 
 REGISTRY_DIGEST = re.compile(r"^[\w./:-]+@sha256:[0-9a-f]{64}$")
 LOCAL_IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
-SMOKE = r"""\documentclass{article}
+SMOKE = r"""\documentclass[a4paper]{article}
+\usepackage[margin=28mm]{geometry}
+\providecommand{\lvert}{|}
+\providecommand{\rvert}{|}
 \begin{document}
-AXIOM Tectonic offline verification.
+AXIOM Tectonic offline mathematical verification:
+\[
+  \displaystyle \sum_{i=1}^{n}\frac{x_i^2+y_i^2}{z_i^2}
+  \quad \textstyle x^2+y^2=z^2
+  \quad \scriptstyle a_i^2+b_i^2=c_i^2
+  \quad \scriptscriptstyle p_{ij}^{kl}+q_{ij}^{kl}=r_{ij}^{kl}.
+\]
+$A \cap B = B \cap A$ and $\lvert A \cap B\rvert \le \lvert A\rvert$.
+
+{\fontsize{11}{13}\selectfont
+$\displaystyle \sum_{i=1}^{n}\frac{x_i^2}{z_i^2}$.
+}
 \end{document}
 """
 

@@ -8,7 +8,7 @@ FROM ${DEBIAN_IMAGE}
 
 # The official Linux release needs these runtime libraries; certificates are
 # required only while a reviewed cache is deliberately warmed.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgraphite2-3 libssl3 \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates fontconfig libgraphite2-3 libssl3 \
  && rm -rf /var/lib/apt/lists/*
 
 # Official GitHub release asset: tectonic@0.15.0, x86_64-unknown-linux-gnu.

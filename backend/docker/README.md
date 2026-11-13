@@ -14,12 +14,22 @@ containing:
 - `tectonic-cache.tar.gz`, extracted from the reviewed warm-up image and
   containing `.cache/Tectonic`, with a recorded SHA-256.
 
-Warm a fresh cache by compiling all seven *rendered* AXIOM templates with
-network access in an otherwise disposable container, then archive `/root/.cache`
-so that the archive root is `.cache/Tectonic`. Verify every rendered template
-again with `--network=none --only-cached` before using that archive. The local
-M12A verification archive SHA-256 is
-`5a766e9d064afbff228b55a5a1c5f1849218dcf4d254b00d5964dcdf5381b02e`.
+Warm a fresh cache in a disposable, network-enabled image before creating a
+new resource image. The tracked warm-up source covers the Computer Modern math
+fonts used by Practice Sheet notation (including `cmmi10.pfb`):
+
+```text
+docker build --pull=false --build-arg TECTONIC_RESOURCES_IMAGE=<existing-resource-digest> \
+  -f backend/docker/tectonic-cache-warmup.Dockerfile -t axiom-tectonic-cache-warmup backend/docker
+```
+
+Extract `/root/.cache` from that disposable image, archive it so the archive
+root is `.cache/Tectonic`, and record its SHA-256 as `TECTONIC_CACHE_SHA256`.
+This is the only intentional network-enabled compilation step. The production
+resource and API images remain offline. Before using the archive, verify the
+new resource image with `verify_tectonic_resource_image.py`; its smoke now
+requires the same mathematical font path. Also recompile the rendered Practice
+Sheet and Answer Key with `--network=none --only-cached`.
 
 Build without using mutable image tags:
 
