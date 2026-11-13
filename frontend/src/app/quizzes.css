@@ -230,12 +230,32 @@
   margin: 0 auto;
   box-shadow: 0 2px 12px rgb(21 43 73 / 18%);
 }
+.practice-sheet-margins-compact {
+  padding: 16px;
+}
+.practice-sheet-margins-normal {
+  padding: clamp(16px, 3vw, 36px);
+}
+.practice-sheet-margins-wide {
+  padding: clamp(28px, 5vw, 52px);
+}
 .practice-sheet-paper-heading {
   text-align: center;
   margin-bottom: 22px;
 }
 .practice-sheet-paper-heading h2 {
   margin: 6px 0;
+}
+.practice-sheet-paper-heading h3 {
+  margin: 6px 0;
+}
+.practice-logo-unavailable {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 7px;
+  border: 1px dashed var(--champagne);
+  color: var(--muted);
+  font-size: 0.75em;
 }
 .practice-sheet-paper-heading p,
 .practice-sheet-identity {
@@ -254,6 +274,32 @@
 .practice-sheet-preview-questions > li {
   margin: 20px 0;
 }
+.practice-sheet-spacing-compact > li {
+  margin-block: 10px;
+}
+.practice-sheet-spacing-normal > li {
+  margin-block: 20px;
+}
+.practice-sheet-spacing-spacious > li {
+  margin-block: 34px;
+}
+.practice-sheet-no-numbering {
+  list-style: none;
+  padding-left: 0;
+}
+.practice-sheet-page-break {
+  break-before: page;
+  border-top: 2px dashed var(--gold);
+  padding-top: 16px;
+}
+.practice-sheet-page-break-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.75em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
 .practice-sheet-question-heading {
   display: flex;
   justify-content: space-between;
@@ -265,9 +311,51 @@
   white-space: nowrap;
 }
 .practice-sheet-answer-space {
-  height: 76px;
   margin-top: 14px;
   border-bottom: 1px solid var(--champagne);
+}
+.practice-sheet-answer-space-none {
+  display: none;
+}
+.practice-sheet-answer-space-small {
+  height: 34px;
+}
+.practice-sheet-answer-space-medium {
+  height: 76px;
+}
+.practice-sheet-answer-space-large {
+  height: 126px;
+}
+.practice-document-settings {
+  margin: 18px 0;
+}
+.practice-document-settings summary {
+  cursor: pointer;
+  color: var(--navy);
+  font-weight: 700;
+}
+.practice-document-settings[open] summary {
+  margin-bottom: 16px;
+}
+.practice-setting-toggles,
+.practice-page-breaks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 14px;
+}
+.practice-setting-toggles label,
+.practice-page-breaks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.practice-page-breaks {
+  border: 1px solid var(--champagne);
+  padding: 12px;
+}
+.practice-page-breaks legend {
+  padding-inline: 4px;
 }
 .practice-drag-handle {
   display: inline-flex;

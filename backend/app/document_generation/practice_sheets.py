@@ -4,10 +4,13 @@ from pathlib import Path
 import re
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.document_generation.exams import safe_question_text
 from app.practice_sheet_models import PracticeSheetVariant
+from app.practice_sheet_schemas import PracticeSheetDocumentSettings
+from app.practice_sheet_settings import default_document_settings
 from app.services.practice_sheets import get_practice_sheet
 
 
@@ -20,6 +23,9 @@ _TEMPLATES = {
     PracticeSheetDocumentType.SHEET: "practice_sheet.tex",
     PracticeSheetDocumentType.ANSWER_KEY: "practice_sheet_answer_key.tex",
 }
+_MARGINS = {"compact": "12mm", "normal": "20mm", "wide": "28mm"}
+_SPACING = {"compact": "3pt", "normal": "6pt", "spacious": "12pt"}
+_ANSWER_SPACE = {"none": "", "small": "18mm", "medium": "30mm", "large": "45mm"}
 
 
 def _plain(value: object | None) -> str:
@@ -65,19 +71,52 @@ def _answer(item: dict) -> str:
     return answer
 
 
-def _blocks(questions: list[dict], *, answer_key: bool) -> str:
+def _settings(sheet) -> PracticeSheetDocumentSettings:
+    try:
+        return PracticeSheetDocumentSettings.model_validate(
+            sheet.document_settings or default_document_settings()
+        )
+    except ValidationError:
+        raise HTTPException(422, "The practice-sheet document settings are invalid") from None
+
+
+def _blocks(
+    questions: list[dict], settings: PracticeSheetDocumentSettings, *, answer_key: bool
+) -> str:
     lines = [r"\begin{enumerate}"]
     for item in questions:
-        points = f" \textbf{{({item['points']} points)}}" if item["points"] is not None else ""
+        if item["question_id"] in settings.questions.page_break_before_question_ids:
+            lines.append(r"\clearpage")
+        points = (
+            f" \textbf{{({item['points']} points)}}"
+            if settings.questions.show_points and item["points"] is not None
+            else ""
+        )
         title = f" ({_plain(item['title'])})" if item.get("title") else ""
-        lines.append(r"\item" + points + title + r"\par " + safe_question_text(item["question_text"]))
+        item_prefix = r"\item" if settings.questions.numbering_enabled else r"\item[]"
+        lines.append(item_prefix + points + title + r"\par " + safe_question_text(item["question_text"]))
         if answer_key:
             lines.append(_answer(item))
-        elif item["response_type"] == "FREE_RESPONSE":
-            lines.append(r"\vspace{25mm}\hrule")
-        else:
-            lines.append(r"\vspace{8mm}")
+        elif _ANSWER_SPACE[settings.questions.answer_space]:
+            lines.append(rf"\vspace{{{_ANSWER_SPACE[settings.questions.answer_space]}}}\hrule")
     return "\n".join(lines + [r"\end{enumerate}"])
+
+
+def _header_details(settings: PracticeSheetDocumentSettings) -> str:
+    details: list[str] = []
+    if settings.header.instructor_name:
+        details.append(r"\textit{Instructor:} " + _plain(settings.header.instructor_name))
+    if settings.header.document_date:
+        details.append(r"\textit{Date:} " + _plain(settings.header.document_date.isoformat()))
+    return (r"\\" + r"\\".join(details)) if details else ""
+
+
+def _student_metadata(settings: PracticeSheetDocumentSettings, total: int) -> str:
+    line = r"\noindent\textbf{Name:} \rule{75mm}{0.4pt}\hfill \textbf{Neptun code:} \rule{35mm}{0.4pt}\\"
+    line += r"\textbf{Date:} \rule{45mm}{0.4pt}"
+    if settings.questions.show_points:
+        line += rf"\hfill \textbf{{Available points:}} {total}"
+    return line
 
 
 def render_practice_sheet_document(
@@ -88,14 +127,21 @@ def render_practice_sheet_document(
     if variant is None:
         raise HTTPException(404, "Practice-sheet variant not found")
     questions = _questions(variant)
+    settings = _settings(sheet)
     total = sum(item["points"] for item in questions if isinstance(item["points"], int))
     values = {
+        "INSTITUTION_NAME": _plain(settings.header.institution_name),
+        "COURSE_NAME": _plain(settings.header.course_name),
         "SHEET_TITLE": _plain(sheet.title),
         "INSTRUCTIONS": _plain(sheet.instructions),
         "VARIANT_LABEL": _plain(variant.label),
-        "TOTAL_POINTS": str(total) if any(item["points"] is not None for item in questions) else "Not specified",
-        "QUESTION_BLOCKS": _blocks(questions, answer_key=False),
-        "ANSWER_KEY_BLOCKS": _blocks(questions, answer_key=True),
+        "HEADER_DETAILS": _header_details(settings),
+        "STUDENT_METADATA": _student_metadata(settings, total),
+        "POINTS_LINE": (rf"\textbf{{Available points:}} {total}" if settings.questions.show_points else ""),
+        "MARGIN": _MARGINS[settings.layout.margins],
+        "QUESTION_SPACING": _SPACING[settings.layout.question_spacing],
+        "QUESTION_BLOCKS": _blocks(questions, settings, answer_key=False),
+        "ANSWER_KEY_BLOCKS": _blocks(questions, settings, answer_key=True),
     }
     template = (Path(__file__).parent / "templates" / _TEMPLATES[document_type]).read_text(encoding="utf-8")
     return re.sub(r"@@([A-Z_]+)@@", lambda match: values[match.group(1)], template)

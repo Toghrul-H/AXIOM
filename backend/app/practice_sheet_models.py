@@ -1,10 +1,11 @@
 """Staff-authored practice-sheet compositions and immutable question-set variants."""
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.practice_sheet_settings import default_document_settings
 
 
 class PracticeSheet(Base):
@@ -19,6 +20,11 @@ class PracticeSheet(Base):
     status: Mapped[str] = mapped_column(String(12), default="draft", server_default="draft", index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    document_settings: Mapped[dict] = mapped_column(
+        JSON,
+        default=default_document_settings,
+        server_default=text("'{\"header\":{\"institution_name\":\"Eötvös Loránd University\",\"course_name\":\"Discrete Mathematics I\",\"instructor_name\":null,\"document_date\":null,\"logo_visible\":true},\"layout\":{\"paper_size\":\"A4\",\"margins\":\"normal\",\"question_spacing\":\"normal\"},\"questions\":{\"show_points\":true,\"answer_space\":\"medium\",\"numbering_enabled\":true,\"page_break_before_question_ids\":[]}}'"),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

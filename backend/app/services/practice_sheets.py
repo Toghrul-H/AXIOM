@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.models import Question
 from app.practice_sheet_models import PracticeSheet, PracticeSheetQuestion, PracticeSheetVariant
 from app.practice_sheet_schemas import (
-    PracticeSheetCreate, PracticeSheetPatch, PracticeSheetQuestionWrite, VariantGenerate,
+    PracticeSheetCreate, PracticeSheetDocumentSettings, PracticeSheetPatch, PracticeSheetQuestionWrite, VariantGenerate,
 )
+from app.practice_sheet_settings import default_document_settings
 
 _GENERATOR_VERSION = "question-set-v1"
 
@@ -57,6 +58,7 @@ def read_practice_sheet(sheet: PracticeSheet) -> dict:
         "finalized_at": sheet.finalized_at,
         "created_at": sheet.created_at,
         "updated_at": sheet.updated_at,
+        "document_settings": sheet.document_settings or default_document_settings(),
         "questions": [
             {"question_id": entry.question_id, "points": entry.points, "position": entry.position}
             for entry in sheet.questions
@@ -97,9 +99,23 @@ def _replace_questions(session: Session, sheet: PracticeSheet, entries: list[Pra
     ]
 
 
+def _validate_document_settings(settings: PracticeSheetDocumentSettings, question_ids: set[int]) -> None:
+    missing = set(settings.questions.page_break_before_question_ids) - question_ids
+    if missing:
+        raise HTTPException(422, "Page-break settings must reference selected practice-sheet questions")
+
+
+def _settings_data(settings: PracticeSheetDocumentSettings) -> dict:
+    return settings.model_dump(mode="json")
+
+
 def create_practice_sheet(session: Session, payload: PracticeSheetCreate, actor_id: int) -> PracticeSheet:
     _active_questions(session, payload.questions)
-    sheet = PracticeSheet(title=payload.title, instructions=payload.instructions, created_by_id=actor_id)
+    _validate_document_settings(payload.document_settings, {entry.question_id for entry in payload.questions})
+    sheet = PracticeSheet(
+        title=payload.title, instructions=payload.instructions, created_by_id=actor_id,
+        document_settings=_settings_data(payload.document_settings),
+    )
     session.add(sheet)
     session.flush()
     sheet.questions = [
@@ -117,10 +133,21 @@ def update_practice_sheet(session: Session, sheet_id: int, payload: PracticeShee
         raise HTTPException(409, "Finalized practice sheets cannot be edited")
     values = payload.model_dump(exclude_unset=True)
     entries = values.pop("questions", None)
+    entry_models = (
+        [PracticeSheetQuestionWrite.model_validate(entry) for entry in entries]
+        if entries is not None
+        else None
+    )
+    values.pop("document_settings", None)
+    settings = payload.document_settings if "document_settings" in payload.model_fields_set else PracticeSheetDocumentSettings.model_validate(sheet.document_settings)
+    question_ids = {entry.question_id for entry in (entry_models if entry_models is not None else sheet.questions)}
+    _validate_document_settings(settings, question_ids)
     for name, value in values.items():
         setattr(sheet, name, value)
-    if entries is not None:
-        _replace_questions(session, sheet, [PracticeSheetQuestionWrite.model_validate(entry) for entry in entries])
+    if "document_settings" in payload.model_fields_set:
+        sheet.document_settings = _settings_data(settings)
+    if entry_models is not None:
+        _replace_questions(session, sheet, entry_models)
     _commit(session)
     session.refresh(sheet)
     return sheet

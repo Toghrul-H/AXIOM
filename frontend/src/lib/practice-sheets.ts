@@ -15,6 +15,49 @@ export type PracticeSheetVariant = {
   question_count: number;
 };
 
+export type PracticeSheetDocumentSettings = {
+  header: {
+    institution_name: string;
+    course_name: string;
+    instructor_name: string | null;
+    document_date: string | null;
+    logo_visible: boolean;
+  };
+  layout: {
+    paper_size: "A4";
+    margins: "compact" | "normal" | "wide";
+    question_spacing: "compact" | "normal" | "spacious";
+  };
+  questions: {
+    show_points: boolean;
+    answer_space: "none" | "small" | "medium" | "large";
+    numbering_enabled: boolean;
+    page_break_before_question_ids: number[];
+  };
+};
+
+export const defaultPracticeSheetDocumentSettings =
+  (): PracticeSheetDocumentSettings => ({
+    header: {
+      institution_name: "Eötvös Loránd University",
+      course_name: "Discrete Mathematics I",
+      instructor_name: null,
+      document_date: null,
+      logo_visible: true,
+    },
+    layout: {
+      paper_size: "A4",
+      margins: "normal",
+      question_spacing: "normal",
+    },
+    questions: {
+      show_points: true,
+      answer_space: "medium",
+      numbering_enabled: true,
+      page_break_before_question_ids: [],
+    },
+  });
+
 export type PracticeSheet = {
   id: number;
   title: string;
@@ -24,6 +67,7 @@ export type PracticeSheet = {
   finalized_at: string | null;
   created_at: string;
   updated_at: string;
+  document_settings: PracticeSheetDocumentSettings;
   questions: PracticeSheetEntry[];
   variants: PracticeSheetVariant[];
 };
@@ -32,6 +76,7 @@ export type PracticeSheetWrite = {
   title: string;
   instructions: string | null;
   questions: Array<Pick<PracticeSheetEntry, "question_id" | "points">>;
+  document_settings: PracticeSheetDocumentSettings;
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

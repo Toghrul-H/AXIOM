@@ -151,6 +151,43 @@ def test_finalization_blocks_mutation_and_invalid_generation(setup):
         assert error.value.status_code == 409
 
 
+def test_document_settings_defaults_validation_and_finalization_consistency(setup):
+    session, questions, lecturer, _, _ = setup
+    # Existing clients omit document_settings and receive safe backward-compatible defaults.
+    sheet = create_practice_sheet(session, PracticeSheetCreate.model_validate(payload(questions)), lecturer.id)
+    assert sheet.document_settings["header"]["institution_name"] == "Eötvös Loránd University"
+    assert sheet.document_settings["layout"] == {
+        "paper_size": "A4", "margins": "normal", "question_spacing": "normal",
+    }
+
+    settings = {
+        "header": {"instructor_name": "Dr. Example", "document_date": "2026-11-13", "logo_visible": False},
+        "layout": {"margins": "wide", "question_spacing": "spacious"},
+        "questions": {"show_points": False, "answer_space": "large", "page_break_before_question_ids": [questions[1].id]},
+    }
+    updated = update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({"document_settings": settings}))
+    assert updated.document_settings["header"]["document_date"] == "2026-11-13"
+    assert updated.document_settings["questions"]["page_break_before_question_ids"] == [questions[1].id]
+    assert read_practice_sheet(updated)["document_settings"] == updated.document_settings
+
+    with pytest.raises(ValueError):
+        PracticeSheetPatch.model_validate({"document_settings": {"layout": {"margins": "custom"}}})
+    with pytest.raises(HTTPException) as error:
+        update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({
+            "document_settings": {"questions": {"page_break_before_question_ids": [999999]}},
+        }))
+    assert error.value.status_code == 422
+
+    variant = generate_variants(session, sheet.id, VariantGenerate.model_validate({"labels": ["A"], "seed": "settings"}))[0]
+    snapshot = variant.question_snapshot.copy()
+    finalized = finalize_practice_sheet(session, sheet.id)
+    assert finalized.document_settings == updated.document_settings
+    with pytest.raises(HTTPException) as error:
+        update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({"document_settings": settings}))
+    assert error.value.status_code == 409
+    assert session.get(PracticeSheetVariant, variant.id).question_snapshot == snapshot
+
+
 def test_variant_documents_are_snapshot_based_and_confidential(setup, monkeypatch):
     session, questions, lecturer, _, student = setup
     sheet = create_practice_sheet(session, PracticeSheetCreate.model_validate(payload(questions)), lecturer.id)
@@ -188,3 +225,47 @@ def test_variant_documents_are_snapshot_based_and_confidential(setup, monkeypatc
     assert response.body.startswith(b"%PDF-")
     assert response.headers["content-disposition"].endswith('sheet.pdf"')
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_variant_documents_apply_validated_document_settings(setup):
+    session, questions, lecturer, _, _ = setup
+    sheet = create_practice_sheet(session, PracticeSheetCreate.model_validate(payload(questions)), lecturer.id)
+    settings = {
+        "header": {
+            "institution_name": "ELTE_50%",
+            "course_name": "DMI & Logic",
+            "instructor_name": "Dr. Example",
+            "document_date": "2026-11-13",
+        },
+        "layout": {"margins": "wide", "question_spacing": "spacious"},
+        "questions": {
+            "show_points": False,
+            "answer_space": "large",
+            "numbering_enabled": False,
+            "page_break_before_question_ids": [questions[1].id],
+        },
+    }
+    update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({"document_settings": settings}))
+    variant = generate_variants(session, sheet.id, VariantGenerate.model_validate({"labels": ["A"], "seed": "document-settings"}))[0]
+    student = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.SHEET)
+    key = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.ANSWER_KEY)
+    assert r"ELTE\_50\%" in student and r"DMI \& Logic" in student
+    assert r"\textit{Instructor:} Dr. Example" in student and "2026-11-13" in student
+    assert r"margin=28mm" in student and r"\setlength{\parskip}{12pt}" in student
+    assert r"\item[]" in student and r"(3 points)" not in student
+    assert r"\clearpage" in student and r"\vspace{45mm}\hrule" in student
+    assert "Reference answer" not in student
+    assert "Reference answer" in key and r"\vspace{45mm}\hrule" not in key
+
+    for answer_space, marker in (("none", None), ("small", "18mm"), ("medium", "30mm")):
+        update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({
+            "document_settings": {"questions": {"answer_space": answer_space}},
+        }))
+        rendered = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.SHEET)
+        assert (r"\vspace" not in rendered) if marker is None else (rf"\vspace{{{marker}}}\hrule" in rendered)
+
+    finalized = finalize_practice_sheet(session, sheet.id)
+    frozen_source = render_practice_sheet_document(session, finalized.id, variant.id, PracticeSheetDocumentType.SHEET)
+    with pytest.raises(HTTPException):
+        update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({"document_settings": settings}))
+    assert render_practice_sheet_document(session, finalized.id, variant.id, PracticeSheetDocumentType.SHEET) == frozen_source

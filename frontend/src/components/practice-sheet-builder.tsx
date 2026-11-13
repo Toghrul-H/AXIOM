@@ -11,8 +11,10 @@ import {
 
 import {
   downloadPracticeSheetPdf,
+  defaultPracticeSheetDocumentSettings,
   practiceSheetsApi,
   type PracticeSheet,
+  type PracticeSheetDocumentSettings,
   type PracticeSheetEntry,
 } from "@/lib/practice-sheets";
 import {
@@ -34,12 +36,14 @@ const emptyDraft = () => ({
   status: "draft" as PracticeSheet["status"],
   entries: [] as PracticeSheetEntry[],
   variants: [] as PracticeSheet["variants"],
+  documentSettings: defaultPracticeSheetDocumentSettings(),
 });
 type Draft = ReturnType<typeof emptyDraft>;
 const signature = (draft: Draft) =>
   JSON.stringify({
     title: draft.title,
     instructions: draft.instructions,
+    document_settings: draft.documentSettings,
     entries: draft.entries.map(({ question_id, points }) => ({
       question_id,
       points,
@@ -171,6 +175,7 @@ export function PracticeSheetBuilder() {
       status: sheet.status,
       entries: sheet.questions,
       variants: sheet.variants,
+      documentSettings: sheet.document_settings,
     };
     setDraft(next);
     setSavedSignature(signature(next));
@@ -182,6 +187,26 @@ export function PracticeSheetBuilder() {
     setDraft((current) => ({
       ...current,
       entries: entries.map((entry, position) => ({ ...entry, position })),
+      documentSettings: {
+        ...current.documentSettings,
+        questions: {
+          ...current.documentSettings.questions,
+          page_break_before_question_ids:
+            current.documentSettings.questions.page_break_before_question_ids.filter(
+              (id) => entries.some((entry) => entry.question_id === id),
+            ),
+        },
+      },
+    }));
+  }
+  function updateDocumentSettings(
+    update: (
+      settings: PracticeSheetDocumentSettings,
+    ) => PracticeSheetDocumentSettings,
+  ) {
+    setDraft((current) => ({
+      ...current,
+      documentSettings: update(current.documentSettings),
     }));
   }
   function add(question: Question) {
@@ -244,6 +269,7 @@ export function PracticeSheetBuilder() {
           question_id,
           points,
         })),
+        document_settings: draft.documentSettings,
       };
       const saved =
         draft.id === null
@@ -539,6 +565,244 @@ export function PracticeSheetBuilder() {
                     }
                   />
                 </label>
+                <details className="panel practice-document-settings" open>
+                  <summary>Document Settings</summary>
+                  <div className="filters-grid">
+                    <label className="field">
+                      Institution name
+                      <input
+                        required
+                        maxLength={200}
+                        value={draft.documentSettings.header.institution_name}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            header: {
+                              ...settings.header,
+                              institution_name: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Course name
+                      <input
+                        required
+                        maxLength={200}
+                        value={draft.documentSettings.header.course_name}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            header: {
+                              ...settings.header,
+                              course_name: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Instructor name (optional)
+                      <input
+                        maxLength={200}
+                        value={
+                          draft.documentSettings.header.instructor_name ?? ""
+                        }
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            header: {
+                              ...settings.header,
+                              instructor_name: event.target.value || null,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Document date (optional)
+                      <input
+                        type="date"
+                        value={
+                          draft.documentSettings.header.document_date ?? ""
+                        }
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            header: {
+                              ...settings.header,
+                              document_date: event.target.value || null,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Paper size
+                      <select value="A4" disabled aria-label="Paper size">
+                        <option value="A4">A4</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      Margins
+                      <select
+                        value={draft.documentSettings.layout.margins}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            layout: {
+                              ...settings.layout,
+                              margins: event.target
+                                .value as PracticeSheetDocumentSettings["layout"]["margins"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="compact">Compact</option>
+                        <option value="normal">Normal</option>
+                        <option value="wide">Wide</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      Question spacing
+                      <select
+                        value={draft.documentSettings.layout.question_spacing}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            layout: {
+                              ...settings.layout,
+                              question_spacing: event.target
+                                .value as PracticeSheetDocumentSettings["layout"]["question_spacing"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="compact">Compact</option>
+                        <option value="normal">Normal</option>
+                        <option value="spacious">Spacious</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      Answer space
+                      <select
+                        value={draft.documentSettings.questions.answer_space}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            questions: {
+                              ...settings.questions,
+                              answer_space: event.target
+                                .value as PracticeSheetDocumentSettings["questions"]["answer_space"],
+                            },
+                          }))
+                        }
+                      >
+                        <option value="none">None</option>
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="practice-setting-toggles">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={draft.documentSettings.header.logo_visible}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            header: {
+                              ...settings.header,
+                              logo_visible: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Show institution logo
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={draft.documentSettings.questions.show_points}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            questions: {
+                              ...settings.questions,
+                              show_points: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Show points
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={
+                          draft.documentSettings.questions.numbering_enabled
+                        }
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            questions: {
+                              ...settings.questions,
+                              numbering_enabled: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Number questions
+                    </label>
+                  </div>
+                  <p className="field-hint">
+                    No approved local institution logo is configured; the
+                    preview omits it.
+                  </p>
+                  {draft.entries.length > 0 && (
+                    <fieldset className="practice-page-breaks">
+                      <legend>Page break before selected questions</legend>
+                      {draft.entries.map((entry, index) => {
+                        const checked =
+                          draft.documentSettings.questions.page_break_before_question_ids.includes(
+                            entry.question_id,
+                          );
+                        return (
+                          <label key={entry.question_id}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) =>
+                                updateDocumentSettings((settings) => ({
+                                  ...settings,
+                                  questions: {
+                                    ...settings.questions,
+                                    page_break_before_question_ids: event.target
+                                      .checked
+                                      ? [
+                                          ...settings.questions
+                                            .page_break_before_question_ids,
+                                          entry.question_id,
+                                        ]
+                                      : settings.questions.page_break_before_question_ids.filter(
+                                          (id) => id !== entry.question_id,
+                                        ),
+                                  },
+                                }))
+                              }
+                            />
+                            Question {index + 1} ·{" "}
+                            {questionById.get(entry.question_id)?.title ??
+                              `#${entry.question_id}`}
+                          </label>
+                        );
+                      })}
+                    </fieldset>
+                  )}
+                </details>
                 <div className="exam-total">
                   <span>{draft.entries.length} selected in the pool</span>
                   <strong>{draft.variants.length} generated variants</strong>
@@ -891,10 +1155,35 @@ export function PracticeSheetBuilder() {
             tabIndex={0}
             aria-label="Scrollable practice sheet preview"
           >
-            <article className="draft-paper practice-sheet-paper">
+            <article
+              className={`draft-paper practice-sheet-paper practice-sheet-margins-${draft.documentSettings.layout.margins}`}
+            >
               <header className="practice-sheet-paper-heading">
-                <strong>AXIOM · Discrete Mathematics I</strong>
-                <h2>{draft.title.trim() || "Untitled Practice Sheet"}</h2>
+                {draft.documentSettings.header.logo_visible && (
+                  <span
+                    className="practice-logo-unavailable"
+                    title="No approved local logo asset is configured"
+                  >
+                    Logo unavailable
+                  </span>
+                )}
+                <strong>
+                  {draft.documentSettings.header.institution_name}
+                </strong>
+                <h2>{draft.documentSettings.header.course_name}</h2>
+                <h3>{draft.title.trim() || "Untitled Practice Sheet"}</h3>
+                {(draft.documentSettings.header.instructor_name ||
+                  draft.documentSettings.header.document_date) && (
+                  <p>
+                    {draft.documentSettings.header.instructor_name &&
+                      `Instructor: ${draft.documentSettings.header.instructor_name}`}
+                    {draft.documentSettings.header.instructor_name &&
+                      draft.documentSettings.header.document_date &&
+                      " · "}
+                    {draft.documentSettings.header.document_date &&
+                      `Date: ${draft.documentSettings.header.document_date}`}
+                  </p>
+                )}
                 <p>Draft question pool</p>
               </header>
               <p className="practice-sheet-identity">
@@ -912,16 +1201,36 @@ export function PracticeSheetBuilder() {
                   Add questions to see the printable draft.
                 </p>
               ) : (
-                <ol className="practice-sheet-preview-questions">
+                <ol
+                  className={`practice-sheet-preview-questions practice-sheet-spacing-${draft.documentSettings.layout.question_spacing} ${draft.documentSettings.questions.numbering_enabled ? "" : "practice-sheet-no-numbering"}`}
+                >
                   {draft.entries.map((entry, index) => {
                     const question = questionById.get(entry.question_id);
+                    const pageBreak =
+                      draft.documentSettings.questions.page_break_before_question_ids.includes(
+                        entry.question_id,
+                      );
                     return (
-                      <li key={entry.question_id}>
+                      <li
+                        key={entry.question_id}
+                        className={
+                          pageBreak ? "practice-sheet-page-break" : undefined
+                        }
+                      >
+                        {pageBreak && (
+                          <span className="practice-sheet-page-break-label">
+                            Page break before this question
+                          </span>
+                        )}
                         <div className="practice-sheet-question-heading">
-                          <strong>Question {index + 1}</strong>
-                          {entry.points !== null && (
-                            <span>{entry.points} points</span>
+                          {draft.documentSettings.questions
+                            .numbering_enabled && (
+                            <strong>Question {index + 1}</strong>
                           )}
+                          {draft.documentSettings.questions.show_points &&
+                            entry.points !== null && (
+                              <span>{entry.points} points</span>
+                            )}
                         </div>
                         {question ? (
                           <MathText text={question.question_text} />
@@ -931,7 +1240,7 @@ export function PracticeSheetBuilder() {
                           </span>
                         )}
                         <div
-                          className="practice-sheet-answer-space"
+                          className={`practice-sheet-answer-space practice-sheet-answer-space-${draft.documentSettings.questions.answer_space}`}
                           aria-hidden="true"
                         />
                       </li>
