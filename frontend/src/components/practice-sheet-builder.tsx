@@ -538,9 +538,43 @@ export function PracticeSheetBuilder() {
                   </p>
                 </div>
                 {draft.id !== null && (
-                  <span className={`exam-status ${draft.status}`}>
-                    {draft.status}
-                  </span>
+                  <div className="exam-document-actions">
+                    <span className={`exam-status ${draft.status}`}>
+                      {draft.status}
+                    </span>
+                    {draft.variants.length > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          onClick={() =>
+                            void download(draft.variants[0].id, "sheet")
+                          }
+                          disabled={downloading !== null || dirty}
+                        >
+                          {downloading === `${draft.variants[0].id}:sheet`
+                            ? "Generating…"
+                            : "Download Student PDF"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          onClick={() =>
+                            void download(draft.variants[0].id, "answer-key")
+                          }
+                          disabled={downloading !== null || dirty}
+                        >
+                          {downloading === `${draft.variants[0].id}:answer-key`
+                            ? "Generating…"
+                            : "Download Answer Key PDF"}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="field-hint">
+                        Generate a variant below to enable PDF downloads.
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <fieldset disabled={busy || readOnly}>

@@ -27,23 +27,58 @@ _SAFE_MATH_COMMANDS = frozenset(
     "alpha beta gamma delta epsilon theta lambda mu nu pi rho sigma tau phi chi psi omega "
     "Gamma Delta Theta Lambda Pi Sigma Phi Psi Omega frac sqrt binom mathbb mathcal mathrm text "
     "left right lvert rvert langle rangle cdot times pm mp div neq le leq ge geq in notin subset subseteq "
-    "supset supseteq cup cap setminus emptyset varnothing land lor neg forall exists implies iff to mapsto "
+    "supset supseteq cup cap bigcup bigcap setminus emptyset varnothing land lor neg forall exists implies iff to mapsto "
     "rightarrow leftarrow leftrightarrow Rightarrow Leftarrow Leftrightarrow Longrightarrow longrightarrow "
-    "sum prod lim log ln sin cos tan max min ldots dots quad qquad circ equiv mod pmod mid nmid parallel perp "
+    "sum prod lim log ln sin cos tan max min ldots cdots dots quad qquad circ equiv mod pmod mid nmid parallel perp "
     "cong sim approx propto infty overline underline vec lfloor rfloor lceil rceil operatorname".split()
 )
 _MATH_FRAGMENT = re.compile(r"\$([^$\n]{1,2000})\$")
 _MATH_COMMAND = re.compile(r"\\([A-Za-z]+)")
+_COMBINING_OVERLINE = re.compile(r"([A-Za-z0-9])\u0304")
+_TEXT_REPLACEMENTS = str.maketrans({
+    "–": "--", "‘": "'", "’": "'", "“": "``", "”": "''",
+    "ﬁ": "fi", "ﬃ": "ffi",
+})
+_UNICODE_MATH_REPLACEMENTS = {
+    "²": r"\textsuperscript{2}", "³": r"\textsuperscript{3}",
+    "¹": r"\textsuperscript{1}", "⁰": r"\textsuperscript{0}",
+    "·": r"\ensuremath{\cdot}", "×": r"\ensuremath{\times}",
+    "Δ": r"\ensuremath{\Delta}", "Σ": r"\ensuremath{\Sigma}",
+    "π": r"\ensuremath{\pi}", "→": r"\ensuremath{\to}",
+    "∈": r"\ensuremath{\in}", "−": r"\ensuremath{-}",
+    "√": r"\ensuremath{\surd}", "∣": r"\ensuremath{\mid}",
+    "∩": r"\ensuremath{\cap}", "∪": r"\ensuremath{\cup}",
+    "≡": r"\ensuremath{\equiv}", "≤": r"\ensuremath{\le}",
+    "≥": r"\ensuremath{\ge}", "⊆": r"\ensuremath{\subseteq}",
+    "◦": r"\ensuremath{\circ}",
+}
+# These aliases are accepted from verified source material but require AMS
+# packages that deliberately are not part of the bounded offline resource set.
+_OFFLINE_MATH_ALIASES = {r"\varnothing": r"\emptyset"}
 
 
 def _plain(value: object | None) -> str:
-    return escape(str(value)).replace("\n", r"\newline ") if value is not None else TO_BE_ANNOUNCED
+    if value is None:
+        return TO_BE_ANNOUNCED
+    escaped = escape(str(value).translate(_TEXT_REPLACEMENTS))
+    # Imported source material sometimes uses z̄/w̄ outside `$...$` fragments.
+    # Only an ASCII base character can become this fixed trusted TeX form.
+    escaped = _COMBINING_OVERLINE.sub(r"$\\overline{\1}$", escaped)
+    for character, replacement in _UNICODE_MATH_REPLACEMENTS.items():
+        escaped = escaped.replace(character, replacement)
+    return escaped.replace("\n", r"\newline ")
 
 
 def _math_safe(source: str) -> bool:
     if any(token in source for token in ("%", "#", "&", "~", "^^")):
         return False
     return all(command in _SAFE_MATH_COMMANDS for command in _MATH_COMMAND.findall(source))
+
+
+def _offline_math(source: str) -> str:
+    for original, replacement in _OFFLINE_MATH_ALIASES.items():
+        source = source.replace(original, replacement)
+    return source
 
 
 def safe_question_text(value: object) -> str:
@@ -53,7 +88,7 @@ def safe_question_text(value: object) -> str:
     cursor = 0
     for match in _MATH_FRAGMENT.finditer(source):
         result.append(_plain(source[cursor:match.start()]))
-        math = match.group(1)
+        math = _offline_math(match.group(1))
         result.append(f"${math}$" if _math_safe(math) else _plain(match.group(0)))
         cursor = match.end()
     result.append(_plain(source[cursor:]))

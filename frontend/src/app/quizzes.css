@@ -450,7 +450,9 @@
 .practice-question-dragging {
   opacity: 0.55;
 }
-@media (max-width: 1280px) {
+/* Each workspace already contains a two-column editor. Stack the preview before
+   that editor becomes a cramped third column on ordinary laptop displays. */
+@media (max-width: 1500px) {
   .exam-builder-workspace,
   .practice-sheet-workspace {
     grid-template-columns: 1fr;

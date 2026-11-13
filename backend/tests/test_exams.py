@@ -147,12 +147,21 @@ def test_draft_delete_empty_finalization_and_utc_normalization(setup):
 
 def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkeypatch):
     session, questions, lecturer, _, _ = setup
-    questions[0].question_text = r"Classify $\mathbb{N}$, show $\lvert A\rvert \ge 0$, and reject $\input{unsafe}$."
+    questions[0].question_text = (
+        r"Classify $\mathbb{N}$, show $\lvert A\rvert \ge 0$, $\varnothing$, and $\bigcap_i A_i\cdots$, use A ∩ B, x², z̄, and √3, "
+        r"and reject $\input{unsafe}$."
+    )
     session.commit()
     exam = create_exam(session, ExamCreate.model_validate(payload(questions)), lecturer.id)
     draft_source = render_exam_document(session, exam.id, ExamDocumentType.EXAM)
     assert r"\mathbb{N}" in draft_source and r"\input{unsafe}" not in draft_source
     assert r"\providecommand{\lvert}{|}" in draft_source
+    assert r"\ensuremath{\cap}" in draft_source
+    assert r"\textsuperscript{2}" in draft_source
+    assert r"$\overline{z}$" in draft_source
+    assert r"\ensuremath{\surd}" in draft_source
+    assert r"\emptyset" in draft_source and r"\varnothing" not in draft_source
+    assert r"\bigcap_i A_i\cdots" in draft_source
     assert "First reference proof." not in draft_source
 
     finalized = finalize_exam(session, exam.id)
