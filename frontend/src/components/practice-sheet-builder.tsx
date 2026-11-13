@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  GripVertical,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 
 import {
   downloadPracticeSheetPdf,
@@ -18,6 +24,7 @@ import { orderedTopics, useMetadata } from "@/lib/use-metadata";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import { QuestionFilters } from "./question-filters";
+import { MathText } from "./math-text";
 
 const PAGE_SIZE = 20;
 const emptyDraft = () => ({
@@ -56,6 +63,9 @@ export function PracticeSheetBuilder() {
   const [draft, setDraft] = useState(emptyDraft);
   const [savedSignature, setSavedSignature] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [previewQuestions, setPreviewQuestions] = useState<
+    Record<number, Question>
+  >({});
   const [filters, setFilters] = useState<Filters>({});
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -69,6 +79,9 @@ export function PracticeSheetBuilder() {
   const [questionsPerVariant, setQuestionsPerVariant] = useState("");
   const [variantSeed, setVariantSeed] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [draggedQuestionId, setDraggedQuestionId] = useState<number | null>(
+    null,
+  );
   const { metadata, error: metadataError } = useMetadata();
   const readOnly = draft.status === "finalized";
   const dirty =
@@ -107,9 +120,37 @@ export function PracticeSheetBuilder() {
     return () => controller.abort();
   }, [filters, offset]);
 
+  useEffect(() => {
+    const missing = draft.entries
+      .map((entry) => entry.question_id)
+      .filter((id) => !previewQuestions[id]);
+    if (missing.length === 0) return;
+    const controller = new AbortController();
+    void Promise.all(
+      missing.map((id) => questionsApi.get(String(id), controller.signal)),
+    )
+      .then((items) => {
+        if (!controller.signal.aborted)
+          setPreviewQuestions((current) => ({
+            ...current,
+            ...Object.fromEntries(items.map((item) => [item.id, item])),
+          }));
+      })
+      .catch((reason: Error) => {
+        if (!controller.signal.aborted) setError(reason.message);
+      });
+    return () => controller.abort();
+  }, [draft.entries, previewQuestions]);
+
   const questionById = useMemo(
-    () => new Map(questions.map((question) => [question.id, question])),
-    [questions],
+    () =>
+      new Map([
+        ...Object.values(previewQuestions).map(
+          (question) => [question.id, question] as const,
+        ),
+        ...questions.map((question) => [question.id, question] as const),
+      ]),
+    [previewQuestions, questions],
   );
   const topicMap = new Map(
     questions.map((question) => [question.topic.id, question.topic]),
@@ -150,6 +191,7 @@ export function PracticeSheetBuilder() {
       draft.entries.some((entry) => entry.question_id === question.id)
     )
       return;
+    setPreviewQuestions((current) => ({ ...current, [question.id]: question }));
     replaceEntries([
       ...draft.entries,
       {
@@ -162,6 +204,20 @@ export function PracticeSheetBuilder() {
   function move(index: number, delta: number) {
     const next = [...draft.entries];
     [next[index], next[index + delta]] = [next[index + delta], next[index]];
+    replaceEntries(next);
+  }
+  function dropQuestion(targetId: number) {
+    if (draggedQuestionId === null || draggedQuestionId === targetId) return;
+    const from = draft.entries.findIndex(
+      (entry) => entry.question_id === draggedQuestionId,
+    );
+    const to = draft.entries.findIndex(
+      (entry) => entry.question_id === targetId,
+    );
+    if (from < 0 || to < 0) return;
+    const next = [...draft.entries];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
     replaceEntries(next);
   }
   async function save() {
@@ -424,347 +480,466 @@ export function PracticeSheetBuilder() {
           </div>
         )}
       </section>
-      <section className="exam-builder-grid">
-        <form
-          className="panel quiz-panel exam-editor"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <div className="panel-heading">
-            <div>
-              <h2>
-                {draft.id === null
-                  ? "New practice sheet"
-                  : readOnly
-                    ? "Finalized practice sheet"
-                    : "Edit draft"}
-              </h2>
-              <p>
-                {readOnly
-                  ? "This saved sheet and its variants are read-only."
-                  : "Set the question pool and variant settings."}
-              </p>
-            </div>
-            {draft.id !== null && (
-              <span className={`exam-status ${draft.status}`}>
-                {draft.status}
-              </span>
-            )}
-          </div>
-          <fieldset disabled={busy || readOnly}>
-            <label className="field">
-              Practice sheet title
-              <input
-                required
-                maxLength={200}
-                value={draft.title}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label className="field">
-              Instructions
-              <textarea
-                maxLength={20000}
-                value={draft.instructions}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    instructions: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <div className="exam-total">
-              <span>{draft.entries.length} selected in the pool</span>
-              <strong>{draft.variants.length} generated variants</strong>
-            </div>
-            <h3>Question pool</h3>
-            {draft.entries.length === 0 ? (
-              <p className="field-hint">
-                Add active questions from the filtered Question Bank.
-              </p>
-            ) : (
-              <ol className="quiz-composition">
-                {draft.entries.map((entry, index) => (
-                  <li key={entry.question_id}>
-                    <span>
-                      #{entry.question_id} ·{" "}
-                      {questionById.get(entry.question_id)?.title ??
-                        "Saved question"}
-                    </span>
-                    <label>
-                      Points{" "}
-                      <input
-                        aria-label={`Points for question ${entry.question_id}`}
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={entry.points ?? ""}
-                        onChange={(event) =>
-                          replaceEntries(
-                            draft.entries.map((item, itemIndex) =>
-                              itemIndex === index
-                                ? {
-                                    ...item,
-                                    points:
-                                      event.target.value === ""
-                                        ? null
-                                        : Number(event.target.value),
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      disabled={index === 0}
-                      onClick={() => move(index, -1)}
-                    >
-                      Up
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      disabled={index === draft.entries.length - 1}
-                      onClick={() => move(index, 1)}
-                    >
-                      Down
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      onClick={() =>
-                        replaceEntries(
-                          draft.entries.filter(
-                            (_, itemIndex) => itemIndex !== index,
-                          ),
-                        )
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {!readOnly && (
-              <div className="exam-actions">
-                <button className="button button-primary" type="submit">
-                  {busy ? "Saving…" : "Save draft"}
-                </button>
+      <section className="practice-sheet-workspace">
+        <div className="practice-sheet-editor-pane">
+          <section className="exam-builder-grid practice-sheet-editor-grid">
+            <form
+              className="panel quiz-panel exam-editor"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void save();
+              }}
+            >
+              <div className="panel-heading">
+                <div>
+                  <h2>
+                    {draft.id === null
+                      ? "New practice sheet"
+                      : readOnly
+                        ? "Finalized practice sheet"
+                        : "Edit draft"}
+                  </h2>
+                  <p>
+                    {readOnly
+                      ? "This saved sheet and its variants are read-only."
+                      : "Set the question pool and variant settings."}
+                  </p>
+                </div>
                 {draft.id !== null && (
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    onClick={() => setConfirmingFinalization(true)}
-                    disabled={draft.variants.length === 0 || dirty}
-                  >
-                    Finalize practice sheet
-                  </button>
-                )}
-                {dirty && (
-                  <span className="field-hint">
-                    Save changes before generating variants or finalizing.
+                  <span className={`exam-status ${draft.status}`}>
+                    {draft.status}
                   </span>
                 )}
               </div>
-            )}
-          </fieldset>
-          {draft.id !== null && (
-            <section className="panel" aria-label="Variant generation">
-              <h3>Generate variants</h3>
-              {readOnly ? (
-                <p className="field-hint">
-                  Finalized sheets cannot generate further variants.
-                </p>
-              ) : (
-                <>
-                  <div className="filters-grid">
-                    <label className="field">
-                      Variants
-                      <input
-                        type="number"
-                        min={1}
-                        max={26}
-                        value={variantCount}
-                        onChange={(event) =>
-                          setVariantCount(Number(event.target.value))
+              <fieldset disabled={busy || readOnly}>
+                <label className="field">
+                  Practice sheet title
+                  <input
+                    required
+                    maxLength={200}
+                    value={draft.title}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="field">
+                  Instructions
+                  <textarea
+                    maxLength={20000}
+                    value={draft.instructions}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        instructions: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="exam-total">
+                  <span>{draft.entries.length} selected in the pool</span>
+                  <strong>{draft.variants.length} generated variants</strong>
+                </div>
+                <h3>Question pool</h3>
+                {draft.entries.length === 0 ? (
+                  <p className="field-hint">
+                    Add active questions from the filtered Question Bank.
+                  </p>
+                ) : (
+                  <ol className="quiz-composition">
+                    {draft.entries.map((entry, index) => (
+                      <li
+                        key={entry.question_id}
+                        className={
+                          draggedQuestionId === entry.question_id
+                            ? "practice-question-dragging"
+                            : undefined
                         }
-                      />
-                    </label>
-                    <label className="field">
-                      Questions per variant (optional)
-                      <input
-                        type="number"
-                        min={1}
-                        max={draft.entries.length || 1}
-                        value={questionsPerVariant}
-                        onChange={(event) =>
-                          setQuestionsPerVariant(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      Deterministic seed (optional)
-                      <input
-                        maxLength={120}
-                        value={variantSeed}
-                        onChange={(event) => setVariantSeed(event.target.value)}
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() => void generateVariants()}
-                    disabled={busy || dirty || draft.entries.length === 0}
-                  >
-                    Generate variants
-                  </button>
-                </>
-              )}
-            </section>
-          )}
-          {draft.variants.length > 0 && (
-            <section className="panel" aria-label="Generated variant metadata">
-              <h3>Generated variants</h3>
-              <ul className="quiz-composition">
-                {draft.variants.map((variant) => (
-                  <li key={variant.id}>
-                    <div>
-                      <strong>Version {variant.label}</strong>
-                      <span>
-                        {variant.question_count} questions ·{" "}
-                        {variant.generator_version} · generated{" "}
-                        {new Date(variant.generated_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="exam-document-actions">
-                      <button
-                        type="button"
-                        className="button button-secondary"
-                        onClick={() => void download(variant.id, "sheet")}
-                        disabled={downloading !== null}
+                        onDragOver={(event) => {
+                          if (!readOnly) event.preventDefault();
+                        }}
+                        onDrop={() => {
+                          if (!readOnly) dropQuestion(entry.question_id);
+                          setDraggedQuestionId(null);
+                        }}
                       >
-                        {downloading === `${variant.id}:sheet`
-                          ? "Generating…"
-                          : "Download Sheet PDF"}
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary"
-                        onClick={() => void download(variant.id, "answer-key")}
-                        disabled={downloading !== null}
-                      >
-                        {downloading === `${variant.id}:answer-key`
-                          ? "Generating…"
-                          : "Download Answer Key PDF"}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </form>
-        <aside className="exam-picker">
-          <h2>Add questions</h2>
-          {metadataError && (
-            <p className="error-message" role="alert">
-              Could not load filters: {metadataError}
-            </p>
-          )}
-          {metadata && (
-            <QuestionFilters
-              metadata={metadata}
-              onApply={(next) => {
-                setLoadingQuestions(true);
-                setFilters(next);
-                setOffset(0);
-              }}
-            />
-          )}
-          {readOnly ? (
-            <p className="field-hint">
-              Finalized practice sheets cannot be changed.
-            </p>
-          ) : loadingQuestions ? (
-            <p role="status">Loading matching questions…</p>
-          ) : groups.length === 0 ? (
-            <p>No questions match these filters.</p>
-          ) : (
-            <div className="quiz-bank-picker">
-              {groups.map((group) => (
-                <details className="topic-accordion" key={group.label} open>
-                  <summary>
-                    <span>{group.label}</span>
-                    <span className="topic-group-count">
-                      {group.items.length}
-                    </span>
-                    <ChevronDown size={17} />
-                  </summary>
-                  <div className="quiz-topic-items">
-                    {group.items.map((question) => (
-                      <div key={question.id}>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="practice-drag-handle"
+                            draggable
+                            aria-label={`Drag question ${index + 1} to reorder`}
+                            title="Drag to reorder"
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData(
+                                "text/plain",
+                                String(entry.question_id),
+                              );
+                              setDraggedQuestionId(entry.question_id);
+                            }}
+                            onDragEnd={() => setDraggedQuestionId(null)}
+                          >
+                            <GripVertical size={18} />
+                          </button>
+                        )}
                         <span>
-                          #{question.id} ·{" "}
-                          {question.title ?? question.question_text}
-                          {!question.is_active ? " (inactive)" : ""}
+                          #{entry.question_id} ·{" "}
+                          {questionById.get(entry.question_id)?.title ??
+                            "Saved question"}
                         </span>
+                        <label>
+                          Points{" "}
+                          <input
+                            aria-label={`Points for question ${entry.question_id}`}
+                            type="number"
+                            min={1}
+                            max={1000}
+                            value={entry.points ?? ""}
+                            onChange={(event) =>
+                              replaceEntries(
+                                draft.entries.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? {
+                                        ...item,
+                                        points:
+                                          event.target.value === ""
+                                            ? null
+                                            : Number(event.target.value),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
                         <button
                           type="button"
-                          className="button button-secondary"
-                          disabled={
-                            !question.is_active ||
-                            draft.entries.some(
-                              (entry) => entry.question_id === question.id,
-                            ) ||
-                            draft.entries.length >= 100
-                          }
-                          onClick={() => add(question)}
+                          className="button button-quiet"
+                          disabled={index === 0}
+                          onClick={() => move(index, -1)}
                         >
-                          Add
+                          Up
                         </button>
-                      </div>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          disabled={index === draft.entries.length - 1}
+                          onClick={() => move(index, 1)}
+                        >
+                          Down
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          onClick={() =>
+                            replaceEntries(
+                              draft.entries.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </li>
                     ))}
+                  </ol>
+                )}
+                {!readOnly && (
+                  <div className="exam-actions">
+                    <button className="button button-primary" type="submit">
+                      {busy ? "Saving…" : "Save draft"}
+                    </button>
+                    {draft.id !== null && (
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => setConfirmingFinalization(true)}
+                        disabled={draft.variants.length === 0 || dirty}
+                      >
+                        Finalize practice sheet
+                      </button>
+                    )}
+                    {dirty && (
+                      <span className="field-hint">
+                        Save changes before generating variants or finalizing.
+                      </span>
+                    )}
                   </div>
-                </details>
-              ))}
-            </div>
-          )}
-          <div className="quiz-actions">
-            <button
-              type="button"
-              className="button button-secondary"
-              disabled={offset === 0 || loadingQuestions}
-              onClick={() => {
-                setLoadingQuestions(true);
-                setOffset(Math.max(0, offset - PAGE_SIZE));
-              }}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              className="button button-secondary"
-              disabled={offset + PAGE_SIZE >= total || loadingQuestions}
-              onClick={() => {
-                setLoadingQuestions(true);
-                setOffset(offset + PAGE_SIZE);
-              }}
-            >
-              Next
-            </button>
+                )}
+              </fieldset>
+              {draft.id !== null && (
+                <section className="panel" aria-label="Variant generation">
+                  <h3>Generate variants</h3>
+                  {readOnly ? (
+                    <p className="field-hint">
+                      Finalized sheets cannot generate further variants.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="filters-grid">
+                        <label className="field">
+                          Variants
+                          <input
+                            type="number"
+                            min={1}
+                            max={26}
+                            value={variantCount}
+                            onChange={(event) =>
+                              setVariantCount(Number(event.target.value))
+                            }
+                          />
+                        </label>
+                        <label className="field">
+                          Questions per variant (optional)
+                          <input
+                            type="number"
+                            min={1}
+                            max={draft.entries.length || 1}
+                            value={questionsPerVariant}
+                            onChange={(event) =>
+                              setQuestionsPerVariant(event.target.value)
+                            }
+                          />
+                        </label>
+                        <label className="field">
+                          Deterministic seed (optional)
+                          <input
+                            maxLength={120}
+                            value={variantSeed}
+                            onChange={(event) =>
+                              setVariantSeed(event.target.value)
+                            }
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => void generateVariants()}
+                        disabled={busy || dirty || draft.entries.length === 0}
+                      >
+                        Generate variants
+                      </button>
+                    </>
+                  )}
+                </section>
+              )}
+              {draft.variants.length > 0 && (
+                <section
+                  className="panel"
+                  aria-label="Generated variant metadata"
+                >
+                  <h3>Generated variants</h3>
+                  <ul className="quiz-composition">
+                    {draft.variants.map((variant) => (
+                      <li key={variant.id}>
+                        <div>
+                          <strong>Version {variant.label}</strong>
+                          <span>
+                            {variant.question_count} questions ·{" "}
+                            {variant.generator_version} · generated{" "}
+                            {new Date(variant.generated_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="exam-document-actions">
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            onClick={() => void download(variant.id, "sheet")}
+                            disabled={downloading !== null}
+                          >
+                            {downloading === `${variant.id}:sheet`
+                              ? "Generating…"
+                              : "Download Sheet PDF"}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            onClick={() =>
+                              void download(variant.id, "answer-key")
+                            }
+                            disabled={downloading !== null}
+                          >
+                            {downloading === `${variant.id}:answer-key`
+                              ? "Generating…"
+                              : "Download Answer Key PDF"}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </form>
+            <aside className="exam-picker">
+              <h2>Add questions</h2>
+              {metadataError && (
+                <p className="error-message" role="alert">
+                  Could not load filters: {metadataError}
+                </p>
+              )}
+              {metadata && (
+                <QuestionFilters
+                  metadata={metadata}
+                  onApply={(next) => {
+                    setLoadingQuestions(true);
+                    setFilters(next);
+                    setOffset(0);
+                  }}
+                />
+              )}
+              {readOnly ? (
+                <p className="field-hint">
+                  Finalized practice sheets cannot be changed.
+                </p>
+              ) : loadingQuestions ? (
+                <p role="status">Loading matching questions…</p>
+              ) : groups.length === 0 ? (
+                <p>No questions match these filters.</p>
+              ) : (
+                <div className="quiz-bank-picker">
+                  {groups.map((group) => (
+                    <details className="topic-accordion" key={group.label} open>
+                      <summary>
+                        <span>{group.label}</span>
+                        <span className="topic-group-count">
+                          {group.items.length}
+                        </span>
+                        <ChevronDown size={17} />
+                      </summary>
+                      <div className="quiz-topic-items">
+                        {group.items.map((question) => (
+                          <div key={question.id}>
+                            <span>
+                              #{question.id} ·{" "}
+                              {question.title ?? question.question_text}
+                              {!question.is_active ? " (inactive)" : ""}
+                            </span>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              disabled={
+                                !question.is_active ||
+                                draft.entries.some(
+                                  (entry) => entry.question_id === question.id,
+                                ) ||
+                                draft.entries.length >= 100
+                              }
+                              onClick={() => add(question)}
+                            >
+                              Add
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              )}
+              <div className="quiz-actions">
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={offset === 0 || loadingQuestions}
+                  onClick={() => {
+                    setLoadingQuestions(true);
+                    setOffset(Math.max(0, offset - PAGE_SIZE));
+                  }}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={offset + PAGE_SIZE >= total || loadingQuestions}
+                  onClick={() => {
+                    setLoadingQuestions(true);
+                    setOffset(offset + PAGE_SIZE);
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            </aside>
+          </section>
+        </div>
+        <aside
+          className="practice-sheet-preview-pane"
+          aria-label="Live practice sheet preview"
+        >
+          <header className="practice-sheet-preview-toolbar">
+            <h2>Draft Preview</h2>
+            <p className="draft-save-state" role="status">
+              {readOnly
+                ? "Finalized sheet — read-only preview"
+                : dirty
+                  ? "Unsaved changes — preview only"
+                  : "Saved draft"}
+            </p>
+            <p>
+              This HTML preview follows the current editor. PDF output remains
+              authoritative.
+            </p>
+          </header>
+          <div
+            className="practice-sheet-preview-scroll"
+            tabIndex={0}
+            aria-label="Scrollable practice sheet preview"
+          >
+            <article className="draft-paper practice-sheet-paper">
+              <header className="practice-sheet-paper-heading">
+                <strong>AXIOM · Discrete Mathematics I</strong>
+                <h2>{draft.title.trim() || "Untitled Practice Sheet"}</h2>
+                <p>Draft question pool</p>
+              </header>
+              <p className="practice-sheet-identity">
+                <strong>Name:</strong> ____________________{" "}
+                <strong>Neptun code:</strong> ____________{" "}
+                <strong>Date:</strong> ____________
+              </p>
+              {draft.instructions.trim() && (
+                <p className="draft-paragraph">
+                  <MathText text={draft.instructions} />
+                </p>
+              )}
+              {draft.entries.length === 0 ? (
+                <p className="field-hint">
+                  Add questions to see the printable draft.
+                </p>
+              ) : (
+                <ol className="practice-sheet-preview-questions">
+                  {draft.entries.map((entry, index) => {
+                    const question = questionById.get(entry.question_id);
+                    return (
+                      <li key={entry.question_id}>
+                        <div className="practice-sheet-question-heading">
+                          <strong>Question {index + 1}</strong>
+                          {entry.points !== null && (
+                            <span>{entry.points} points</span>
+                          )}
+                        </div>
+                        {question ? (
+                          <MathText text={question.question_text} />
+                        ) : (
+                          <span className="field-hint">
+                            Loading question {entry.question_id}…
+                          </span>
+                        )}
+                        <div
+                          className="practice-sheet-answer-space"
+                          aria-hidden="true"
+                        />
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </article>
           </div>
         </aside>
       </section>

@@ -183,6 +183,128 @@
   margin-top: 24px;
   border-left: 4px solid var(--gold);
 }
+.practice-sheet-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  gap: 24px;
+  align-items: start;
+  margin-top: 24px;
+}
+.practice-sheet-editor-grid {
+  margin-top: 0;
+}
+.practice-sheet-preview-pane {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  max-height: calc(100dvh - 100px);
+  overflow: hidden;
+  border: 1px solid var(--champagne);
+  background: var(--ivory);
+}
+.practice-sheet-preview-toolbar {
+  padding: 16px;
+  border-bottom: 1px solid var(--champagne);
+  background: var(--warm-beige);
+}
+.practice-sheet-preview-toolbar h2,
+.practice-sheet-preview-toolbar p {
+  margin: 0;
+}
+.practice-sheet-preview-toolbar p + p {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.practice-sheet-preview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+.practice-sheet-paper {
+  width: min(100%, 210mm);
+  min-height: 297mm;
+  margin: 0 auto;
+  box-shadow: 0 2px 12px rgb(21 43 73 / 18%);
+}
+.practice-sheet-paper-heading {
+  text-align: center;
+  margin-bottom: 22px;
+}
+.practice-sheet-paper-heading h2 {
+  margin: 6px 0;
+}
+.practice-sheet-paper-heading p,
+.practice-sheet-identity {
+  font-size: 0.88em;
+}
+.practice-sheet-identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--champagne);
+}
+.practice-sheet-preview-questions {
+  padding-left: 1.4em;
+}
+.practice-sheet-preview-questions > li {
+  margin: 20px 0;
+}
+.practice-sheet-question-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.practice-sheet-question-heading span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.practice-sheet-answer-space {
+  height: 76px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--champagne);
+}
+.practice-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid var(--champagne);
+  border-radius: 5px;
+  color: var(--navy);
+  cursor: grab;
+}
+.practice-drag-handle:active {
+  cursor: grabbing;
+}
+.practice-question-dragging {
+  opacity: 0.55;
+}
+@media (max-width: 1280px) {
+  .practice-sheet-workspace {
+    grid-template-columns: 1fr;
+  }
+  .practice-sheet-preview-pane {
+    position: static;
+    max-height: 75dvh;
+  }
+}
+@media (max-width: 560px) {
+  .practice-sheet-preview-scroll {
+    padding: 8px;
+  }
+  .practice-sheet-paper {
+    min-height: 0;
+    padding: 18px;
+  }
+}
 @media (max-width: 900px) {
   .exam-builder-grid {
     grid-template-columns: 1fr;
@@ -199,27 +321,121 @@
   }
 }
 
-.recruitment-section { margin-top: 28px; }
-.recruitment-card-heading, .recruitment-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.recruitment-card-heading h2, .recruitment-card-heading h3 { margin-bottom: 4px; }
-.recruitment-card-heading p, .recruitment-row p { margin: 0; color: var(--muted); }
-.recruitment-list { display: grid; gap: 14px; }
-.recruitment-row { border-top: 1px solid var(--champagne); padding-top: 14px; }
-.recruitment-status { display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--gold); border-radius: 999px; padding: 4px 9px; font-size: .72rem; font-weight: 700; letter-spacing: .05em; white-space: nowrap; }
-.status-submitted, .status-under_review { color: var(--navy); background: var(--ivory); }
-.status-accepted { color: var(--ivory); background: var(--navy); }
-.status-rejected, .status-withdrawn { color: var(--navy); background: var(--champagne); }
-.recruitment-metrics, .recruitment-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0; }
-.recruitment-metrics div { min-width: 112px; }
-.recruitment-metrics dt { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
-.recruitment-metrics dd { margin: 3px 0 0; font-weight: 700; }
-.recruitment-summary span { font-size: .8rem; }
-.recruitment-form > fieldset, .recruitment-form fieldset { border: 1px solid var(--champagne); border-radius: 8px; margin: 18px 0; padding: 16px; }
-.recruitment-form legend { color: var(--navy); font-weight: 700; padding: 0 6px; }
-.field-error { display: block; color: #8b2f2f; font-size: .86rem; margin: -6px 0 10px; }
-.recruitment-review { border-left: 4px solid var(--gold); background: var(--ivory); margin-top: 18px; padding: 16px; }
-.recruitment-table-wrap { overflow-x: auto; }
-@media (max-width: 700px) { .recruitment-card-heading, .recruitment-row { flex-direction: column; } .recruitment-row .button { width: 100%; } .recruitment-metrics { gap: 12px; } }
+.recruitment-section {
+  margin-top: 28px;
+}
+.recruitment-card-heading,
+.recruitment-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.recruitment-card-heading h2,
+.recruitment-card-heading h3 {
+  margin-bottom: 4px;
+}
+.recruitment-card-heading p,
+.recruitment-row p {
+  margin: 0;
+  color: var(--muted);
+}
+.recruitment-list {
+  display: grid;
+  gap: 14px;
+}
+.recruitment-row {
+  border-top: 1px solid var(--champagne);
+  padding-top: 14px;
+}
+.recruitment-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.status-submitted,
+.status-under_review {
+  color: var(--navy);
+  background: var(--ivory);
+}
+.status-accepted {
+  color: var(--ivory);
+  background: var(--navy);
+}
+.status-rejected,
+.status-withdrawn {
+  color: var(--navy);
+  background: var(--champagne);
+}
+.recruitment-metrics,
+.recruitment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 16px 0;
+}
+.recruitment-metrics div {
+  min-width: 112px;
+}
+.recruitment-metrics dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.recruitment-metrics dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+.recruitment-summary span {
+  font-size: 0.8rem;
+}
+.recruitment-form > fieldset,
+.recruitment-form fieldset {
+  border: 1px solid var(--champagne);
+  border-radius: 8px;
+  margin: 18px 0;
+  padding: 16px;
+}
+.recruitment-form legend {
+  color: var(--navy);
+  font-weight: 700;
+  padding: 0 6px;
+}
+.field-error {
+  display: block;
+  color: #8b2f2f;
+  font-size: 0.86rem;
+  margin: -6px 0 10px;
+}
+.recruitment-review {
+  border-left: 4px solid var(--gold);
+  background: var(--ivory);
+  margin-top: 18px;
+  padding: 16px;
+}
+.recruitment-table-wrap {
+  overflow-x: auto;
+}
+@media (max-width: 700px) {
+  .recruitment-card-heading,
+  .recruitment-row {
+    flex-direction: column;
+  }
+  .recruitment-row .button {
+    width: 100%;
+  }
+  .recruitment-metrics {
+    gap: 12px;
+  }
+}
 
 .math-symbols {
   display: flex;
