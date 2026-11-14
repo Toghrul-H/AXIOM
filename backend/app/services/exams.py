@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.assessment_models import AssessmentConfiguration
 from app.exam_models import Exam, ExamQuestion
-from app.exam_schemas import ExamCreate, ExamPatch, ExamQuestionWrite
+from app.exam_schemas import ExamCreate, ExamDocumentSettings, ExamPatch, ExamQuestionWrite
+from app.exam_settings import default_exam_document_settings
 from app.models import Question
 
 
@@ -45,6 +46,7 @@ def read_exam(exam: Exam) -> dict:
             {"question_id": entry.question_id, "points": entry.points, "position": entry.position}
             for entry in exam.questions
         ],
+        "document_settings": exam.document_settings or default_exam_document_settings(),
         "snapshot_available": exam.question_snapshot is not None,
     }
 
@@ -92,14 +94,26 @@ def _valid_configuration(session: Session, configuration_id: int | None) -> None
         raise HTTPException(422, "Unknown assessment configuration")
 
 
+def _validate_document_settings(settings: ExamDocumentSettings, question_ids: set[int]) -> None:
+    missing = set(settings.questions.page_break_before_question_ids) - question_ids
+    if missing:
+        raise HTTPException(422, "Page-break settings must reference selected exam questions")
+
+
+def _settings_data(settings: ExamDocumentSettings) -> dict:
+    return settings.model_dump(mode="json")
+
+
 def create_exam(session: Session, payload: ExamCreate, actor_id: int) -> Exam:
     _valid_questions(session, payload.questions)
     _valid_configuration(session, payload.assessment_configuration_id)
+    _validate_document_settings(payload.document_settings, {entry.question_id for entry in payload.questions})
     exam = Exam(
         title=payload.title,
         instructions=payload.instructions,
         assessment_configuration_id=payload.assessment_configuration_id,
         created_by_id=actor_id,
+        document_settings=_settings_data(payload.document_settings),
     )
     session.add(exam)
     session.flush()
@@ -118,12 +132,30 @@ def update_exam(session: Session, exam_id: int, payload: ExamPatch) -> Exam:
         raise HTTPException(409, "Finalized exams cannot be edited")
     values = payload.model_dump(exclude_unset=True)
     entries = values.pop("questions", None)
+    entry_models = (
+        [ExamQuestionWrite.model_validate(entry) for entry in entries]
+        if entries is not None
+        else None
+    )
+    values.pop("document_settings", None)
     if "assessment_configuration_id" in values:
         _valid_configuration(session, values["assessment_configuration_id"])
+    settings = (
+        payload.document_settings
+        if "document_settings" in payload.model_fields_set
+        else ExamDocumentSettings.model_validate(exam.document_settings or default_exam_document_settings())
+    )
+    question_ids = {
+        entry.question_id
+        for entry in (entry_models if entry_models is not None else exam.questions)
+    }
+    _validate_document_settings(settings, question_ids)
     for name, value in values.items():
         setattr(exam, name, value)
-    if entries is not None:
-        _replace_questions(session, exam, [ExamQuestionWrite.model_validate(entry) for entry in entries])
+    if entry_models is not None:
+        _replace_questions(session, exam, entry_models)
+    if "document_settings" in payload.model_fields_set:
+        exam.document_settings = _settings_data(settings)
     _commit(session)
     session.refresh(exam)
     return exam
@@ -149,10 +181,13 @@ def finalize_exam(session: Session, exam_id: int) -> Exam:
         [ExamQuestionWrite(question_id=entry.question_id, points=entry.points) for entry in entries],
         lock=True,
     )
+    settings = ExamDocumentSettings.model_validate(exam.document_settings or default_exam_document_settings())
+    _validate_document_settings(settings, {entry.question_id for entry in entries})
     exam.question_snapshot = {
         "version": 1,
         "title": exam.title,
         "instructions": exam.instructions,
+        "document_settings": _settings_data(settings),
         "questions": [
             {
                 "question_id": entry.question_id,

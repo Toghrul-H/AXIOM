@@ -1,7 +1,7 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[margin=20mm]{geometry}
+\usepackage[margin=@@MARGIN@@]{geometry}
 \usepackage{amsmath,amsfonts}
 \providecommand{\lvert}{|}
 \providecommand{\rvert}{|}
@@ -9,16 +9,18 @@
 \providecommand{\operatorname}[1]{\mathrm{#1}}
 \providecommand{\mathbb}[1]{\mathrm{#1}}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{6pt}
+\setlength{\parskip}{@@QUESTION_SPACING@@}
+\pagestyle{@@PAGE_STYLE@@}
 \begin{document}
 \begin{center}
-{\Large \textbf{AXIOM -- Discrete Mathematics I}}\\
+{\Large \textbf{@@INSTITUTION_NAME@@}}\\
+{\large \textbf{@@COURSE_NAME@@}}\\
 {\large \textbf{@@EXAM_TITLE@@}}\\
+@@HEADER_DETAILS@@
 @@ASSESSMENT_CONTEXT@@
 \end{center}
 
-\noindent\textbf{Name:} \rule{75mm}{0.4pt}\hfill \textbf{Neptun code:} \rule{35mm}{0.4pt}\\
-\textbf{Date:} \rule{45mm}{0.4pt}\hfill \textbf{Total available points:} @@TOTAL_POINTS@@
+@@STUDENT_METADATA@@
 
 @@INSTRUCTIONS@@
 

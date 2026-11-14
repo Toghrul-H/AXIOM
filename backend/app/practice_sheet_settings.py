@@ -14,6 +14,7 @@ DEFAULT_DOCUMENT_SETTINGS = {
         "paper_size": "A4",
         "margins": "normal",
         "question_spacing": "normal",
+        "page_numbering": True,
     },
     "questions": {
         "show_points": True,

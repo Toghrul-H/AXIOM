@@ -5,7 +5,9 @@ import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 import {
   downloadExamPdf,
+  defaultExamDocumentSettings,
   examsApi,
+  type ExamDocumentSettings,
   type Exam,
   type ExamEntry,
 } from "@/lib/exams";
@@ -27,6 +29,7 @@ const emptyDraft = () => ({
   instructions: "",
   status: "draft" as Exam["status"],
   entries: [] as ExamEntry[],
+  documentSettings: defaultExamDocumentSettings(),
 });
 const signature = (draft: ReturnType<typeof emptyDraft>) =>
   JSON.stringify({
@@ -36,6 +39,7 @@ const signature = (draft: ReturnType<typeof emptyDraft>) =>
       question_id,
       points,
     })),
+    documentSettings: draft.documentSettings,
   });
 
 export function ExamBuilder() {
@@ -161,6 +165,7 @@ export function ExamBuilder() {
       instructions: exam.instructions ?? "",
       status: exam.status,
       entries: exam.questions,
+      documentSettings: exam.document_settings,
     };
     setDraft(next);
     setSavedSignature(signature(next));
@@ -172,6 +177,14 @@ export function ExamBuilder() {
     setDraft((current) => ({
       ...current,
       entries: entries.map((entry, position) => ({ ...entry, position })),
+    }));
+  }
+  function updateDocumentSettings(
+    update: (settings: ExamDocumentSettings) => ExamDocumentSettings,
+  ) {
+    setDraft((current) => ({
+      ...current,
+      documentSettings: update(current.documentSettings),
     }));
   }
   function add(question: Question) {
@@ -213,6 +226,7 @@ export function ExamBuilder() {
       const body = {
         title: draft.title.trim(),
         instructions: draft.instructions.trim() || null,
+        document_settings: draft.documentSettings,
         questions: draft.entries.map(({ question_id, points }) => ({
           question_id,
           points,
@@ -488,11 +502,239 @@ export function ExamBuilder() {
                   }
                 />
               </label>
+              <details className="panel practice-document-settings" open>
+                <summary>Document settings</summary>
+                <div className="filters-grid">
+                  <label className="field">
+                    Institution name
+                    <input
+                      required
+                      maxLength={200}
+                      value={draft.documentSettings.header.institution_name}
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          header: {
+                            ...settings.header,
+                            institution_name: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Course title
+                    <input
+                      required
+                      maxLength={200}
+                      value={draft.documentSettings.header.course_name}
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          header: {
+                            ...settings.header,
+                            course_name: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Instructor (optional)
+                    <input
+                      maxLength={200}
+                      value={
+                        draft.documentSettings.header.instructor_name ?? ""
+                      }
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          header: {
+                            ...settings.header,
+                            instructor_name: event.target.value || null,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Exam date (optional)
+                    <input
+                      type="date"
+                      value={draft.documentSettings.header.document_date ?? ""}
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          header: {
+                            ...settings.header,
+                            document_date: event.target.value || null,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Duration in minutes (optional)
+                    <input
+                      type="number"
+                      min={1}
+                      max={600}
+                      value={
+                        draft.documentSettings.header.duration_minutes ?? ""
+                      }
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          header: {
+                            ...settings.header,
+                            duration_minutes: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Margins
+                    <select
+                      value={draft.documentSettings.layout.margins}
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          layout: {
+                            ...settings.layout,
+                            margins: event.target
+                              .value as ExamDocumentSettings["layout"]["margins"],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="compact">Compact</option>
+                      <option value="normal">Normal</option>
+                      <option value="wide">Wide</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Question spacing
+                    <select
+                      value={draft.documentSettings.layout.question_spacing}
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          layout: {
+                            ...settings.layout,
+                            question_spacing: event.target
+                              .value as ExamDocumentSettings["layout"]["question_spacing"],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="compact">Compact</option>
+                      <option value="normal">Normal</option>
+                      <option value="spacious">Spacious</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Answer space
+                    <select
+                      value={draft.documentSettings.questions.answer_space}
+                      onChange={(event) =>
+                        updateDocumentSettings((settings) => ({
+                          ...settings,
+                          questions: {
+                            ...settings.questions,
+                            answer_space: event.target
+                              .value as ExamDocumentSettings["questions"]["answer_space"],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="none">None</option>
+                      <option value="small">Small</option>
+                      <option value="medium">Medium</option>
+                      <option value="large">Large</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="practice-setting-toggles">
+                  {[
+                    ["layout", "page_numbering", "Show page numbers"],
+                    ["questions", "show_points", "Show points"],
+                    ["questions", "numbering_enabled", "Number questions"],
+                    ["student_fields", "show_name", "Student name field"],
+                    ["student_fields", "show_neptun_code", "Neptun code field"],
+                    ["student_fields", "show_date", "Student date field"],
+                  ].map(([group, key, label]) => {
+                    const value = draft.documentSettings[
+                      group as keyof ExamDocumentSettings
+                    ][key as never] as boolean;
+                    return (
+                      <label key={`${group}-${key}`}>
+                        <input
+                          type="checkbox"
+                          checked={value}
+                          onChange={(event) =>
+                            updateDocumentSettings((settings) => ({
+                              ...settings,
+                              [group]: {
+                                ...settings[
+                                  group as keyof ExamDocumentSettings
+                                ],
+                                [key]: event.target.checked,
+                              },
+                            }))
+                          }
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </details>
               <div className="exam-total">
                 <span>{draft.entries.length} selected</span>
                 <strong>{totalPoints} total points</strong>
               </div>
               <h3>Questions in print order</h3>
+              {draft.entries.length > 0 && (
+                <fieldset className="practice-page-breaks">
+                  <legend>Page break before selected questions</legend>
+                  {draft.entries.map((entry, index) => {
+                    const checked =
+                      draft.documentSettings.questions.page_break_before_question_ids.includes(
+                        entry.question_id,
+                      );
+                    return (
+                      <label key={`page-break-${entry.question_id}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            updateDocumentSettings((settings) => ({
+                              ...settings,
+                              questions: {
+                                ...settings.questions,
+                                page_break_before_question_ids: event.target
+                                  .checked
+                                  ? [
+                                      ...settings.questions
+                                        .page_break_before_question_ids,
+                                      entry.question_id,
+                                    ]
+                                  : settings.questions.page_break_before_question_ids.filter(
+                                      (id) => id !== entry.question_id,
+                                    ),
+                              },
+                            }))
+                          }
+                        />
+                        Question {index + 1}
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              )}
               {draft.entries.length === 0 ? (
                 <p className="field-hint">
                   Add active questions from the filtered Question Bank.

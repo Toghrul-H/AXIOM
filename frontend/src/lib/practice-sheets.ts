@@ -27,6 +27,7 @@ export type PracticeSheetDocumentSettings = {
     paper_size: "A4";
     margins: "compact" | "normal" | "wide";
     question_spacing: "compact" | "normal" | "spacious";
+    page_numbering: boolean;
   };
   questions: {
     show_points: boolean;
@@ -49,6 +50,7 @@ export const defaultPracticeSheetDocumentSettings =
       paper_size: "A4",
       margins: "normal",
       question_spacing: "normal",
+      page_numbering: true,
     },
     questions: {
       show_points: true,

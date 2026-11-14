@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.assessment_models import AssessmentConfiguration
 from app.document_generation.latex import TO_BE_ANNOUNCED, escape
 from app.exam_models import Exam
+from app.exam_schemas import ExamDocumentSettings
+from app.exam_settings import default_exam_document_settings
 from app.models import Question
 from app.services.exams import get_exam
 
@@ -23,6 +25,9 @@ _TEMPLATES = {
     ExamDocumentType.EXAM: "exam.tex",
     ExamDocumentType.ANSWER_KEY: "exam_answer_key.tex",
 }
+_MARGINS = {"compact": "12mm", "normal": "20mm", "wide": "28mm"}
+_SPACING = {"compact": "3pt", "normal": "6pt", "spacious": "12pt"}
+_ANSWER_SPACE = {"none": "", "small": "18mm", "medium": "30mm", "large": "45mm"}
 _SAFE_MATH_COMMANDS = frozenset(
     "alpha beta gamma delta epsilon theta lambda mu nu pi rho sigma tau phi chi psi omega "
     "Gamma Delta Theta Lambda Pi Sigma Phi Psi Omega frac sqrt binom mathbb mathcal mathrm text "
@@ -169,18 +174,66 @@ def _answer(item: dict) -> str:
     return answer
 
 
-def _blocks(questions: list[dict], answer_key: bool) -> str:
+def _settings(exam: Exam) -> ExamDocumentSettings:
+    data = exam.document_settings or default_exam_document_settings()
+    if exam.status == "finalized" and isinstance(exam.question_snapshot, dict):
+        # New finalized exams freeze their layout with their content. Older snapshots
+        # safely retain the immutable persisted column added by migration 0021.
+        data = exam.question_snapshot.get("document_settings", data)
+    try:
+        return ExamDocumentSettings.model_validate(data)
+    except ValueError:
+        raise HTTPException(422, "The exam document settings are invalid") from None
+
+
+def _blocks(questions: list[dict], settings: ExamDocumentSettings, *, answer_key: bool) -> str:
     lines = [r"\begin{enumerate}"]
     for item in questions:
+        if item["question_id"] in settings.questions.page_break_before_question_ids:
+            lines.append(r"\clearpage")
         title = f" ({_plain(item['title'])})" if item.get("title") else ""
-        lines.append(r"\item \textbf{" + str(item["points"]) + " points}" + title + r"\par " + safe_question_text(item["question_text"]))
+        points = (
+            rf" \textbf{{({item['points']} points)}}"
+            if settings.questions.show_points
+            else ""
+        )
+        prefix = r"\item" if settings.questions.numbering_enabled else r"\item[]"
+        lines.append(prefix + points + title + r"\par " + safe_question_text(item["question_text"]))
         if answer_key:
             lines.append(_answer(item))
-        elif item.get("response_type") == "FREE_RESPONSE":
-            lines.append(r"\vspace{25mm}\hrule")
-        else:
-            lines.append(r"\vspace{8mm}")
+        elif _ANSWER_SPACE[settings.questions.answer_space]:
+            lines.append(rf"\vspace{{{_ANSWER_SPACE[settings.questions.answer_space]}}}\hrule")
     return "\n".join(lines + [r"\end{enumerate}"])
+
+
+def _header_details(settings: ExamDocumentSettings) -> str:
+    details: list[str] = []
+    if settings.header.instructor_name:
+        details.append("Instructor: " + _plain(settings.header.instructor_name))
+    if settings.header.document_date:
+        details.append("Date: " + _plain(settings.header.document_date.isoformat()))
+    if settings.header.duration_minutes:
+        details.append(f"Duration: {settings.header.duration_minutes} minutes")
+    # The title line in the template already ends with `\\`; terminate only
+    # the final detail so optional assessment context starts on a new line.
+    return (r"\\".join(details) + r"\\") if details else ""
+
+
+def _student_metadata(settings: ExamDocumentSettings, total: int) -> str:
+    fields: list[str] = []
+    if settings.student_fields.show_name:
+        fields.append(r"\textbf{Name:} \rule{75mm}{0.4pt}")
+    if settings.student_fields.show_neptun_code:
+        fields.append(r"\textbf{Neptun code:} \rule{35mm}{0.4pt}")
+    first = r"\hfill ".join(fields)
+    second: list[str] = []
+    if settings.student_fields.show_date:
+        second.append(r"\textbf{Date:} \rule{45mm}{0.4pt}")
+    if settings.questions.show_points:
+        second.append(rf"\textbf{{Total available points:}} {total}")
+    if first and second:
+        return first + r"\\" + r"\hfill ".join(second)
+    return first or r"\hfill ".join(second)
 
 
 def render_exam_document(session: Session, exam_id: int, document_type: ExamDocumentType) -> str:
@@ -189,13 +242,22 @@ def render_exam_document(session: Session, exam_id: int, document_type: ExamDocu
     if exam.status not in {"draft", "finalized"}:
         raise HTTPException(422, "Exam status is invalid")
     configuration = session.get(AssessmentConfiguration, exam.assessment_configuration_id) if exam.assessment_configuration_id else None
+    settings = _settings(exam)
+    total = sum(item["points"] for item in questions)
     values = {
+        "INSTITUTION_NAME": _plain(settings.header.institution_name),
+        "COURSE_NAME": _plain(settings.header.course_name),
         "EXAM_TITLE": _plain(exam.title),
         "INSTRUCTIONS": safe_question_text(exam.instructions) if exam.instructions else "",
         "ASSESSMENT_CONTEXT": _plain(configuration.display_label) if configuration else "",
-        "TOTAL_POINTS": str(sum(item["points"] for item in questions)),
-        "QUESTION_BLOCKS": _blocks(questions, answer_key=False),
-        "ANSWER_KEY_BLOCKS": _blocks(questions, answer_key=True),
+        "HEADER_DETAILS": _header_details(settings),
+        "STUDENT_METADATA": _student_metadata(settings, total),
+        "POINTS_LINE": rf"\textbf{{Total available points:}} {total}" if settings.questions.show_points else "",
+        "MARGIN": _MARGINS[settings.layout.margins],
+        "QUESTION_SPACING": _SPACING[settings.layout.question_spacing],
+        "PAGE_STYLE": "plain" if settings.layout.page_numbering else "empty",
+        "QUESTION_BLOCKS": _blocks(questions, settings, answer_key=False),
+        "ANSWER_KEY_BLOCKS": _blocks(questions, settings, answer_key=True),
     }
     template = (Path(__file__).parent / "templates" / _TEMPLATES[document_type]).read_text(encoding="utf-8")
     return re.sub(r"@@([A-Z_]+)@@", lambda match: values[match.group(1)], template)

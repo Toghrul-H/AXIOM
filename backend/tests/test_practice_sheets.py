@@ -157,12 +157,12 @@ def test_document_settings_defaults_validation_and_finalization_consistency(setu
     sheet = create_practice_sheet(session, PracticeSheetCreate.model_validate(payload(questions)), lecturer.id)
     assert sheet.document_settings["header"]["institution_name"] == "Eötvös Loránd University"
     assert sheet.document_settings["layout"] == {
-        "paper_size": "A4", "margins": "normal", "question_spacing": "normal",
+        "paper_size": "A4", "margins": "normal", "question_spacing": "normal", "page_numbering": True,
     }
 
     settings = {
         "header": {"instructor_name": "Dr. Example", "document_date": "2026-11-13", "logo_visible": False},
-        "layout": {"margins": "wide", "question_spacing": "spacious"},
+        "layout": {"margins": "wide", "question_spacing": "spacious", "page_numbering": False},
         "questions": {"show_points": False, "answer_space": "large", "page_break_before_question_ids": [questions[1].id]},
     }
     updated = update_practice_sheet(session, sheet.id, PracticeSheetPatch.model_validate({"document_settings": settings}))
@@ -243,7 +243,7 @@ def test_variant_documents_apply_validated_document_settings(setup):
             "instructor_name": "Dr. Example",
             "document_date": "2026-11-13",
         },
-        "layout": {"margins": "wide", "question_spacing": "spacious"},
+        "layout": {"margins": "wide", "question_spacing": "spacious", "page_numbering": False},
         "questions": {
             "show_points": False,
             "answer_space": "large",
@@ -258,6 +258,7 @@ def test_variant_documents_apply_validated_document_settings(setup):
     assert r"ELTE\_50\%" in student and r"DMI \& Logic" in student
     assert "Instructor: Dr. Example" in student and "2026-11-13" in student
     assert r"margin=28mm" in student and r"\setlength{\parskip}{12pt}" in student
+    assert r"\pagestyle{empty}" in student and r"\pagestyle{empty}" in key
     assert r"\item[]" in student and r"(3 points)" not in student
     assert r"\clearpage" in student and r"\vspace{45mm}\hrule" in student
     assert "Reference answer" not in student

@@ -1,10 +1,11 @@
 """Staff-authored printable exam compositions and immutable final snapshots."""
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.exam_settings import default_exam_document_settings
 
 
 class Exam(Base):
@@ -29,6 +30,11 @@ class Exam(Base):
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Kept private to staff-only services; contains answer material for the key.
     question_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    document_settings: Mapped[dict] = mapped_column(
+        JSON,
+        default=default_exam_document_settings,
+        server_default=text("'{\"header\":{\"institution_name\":\"Eötvös Loránd University\",\"course_name\":\"Discrete Mathematics I\",\"instructor_name\":null,\"document_date\":null,\"duration_minutes\":null},\"layout\":{\"paper_size\":\"A4\",\"margins\":\"normal\",\"question_spacing\":\"normal\",\"page_numbering\":true},\"student_fields\":{\"show_name\":true,\"show_neptun_code\":true,\"show_date\":true},\"questions\":{\"show_points\":true,\"answer_space\":\"medium\",\"numbering_enabled\":true,\"page_break_before_question_ids\":[]}}'"),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

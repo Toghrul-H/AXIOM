@@ -22,6 +22,7 @@ class PracticeSheetLayoutSettings(Schema):
     paper_size: Literal["A4"] = "A4"
     margins: Literal["compact", "normal", "wide"] = "normal"
     question_spacing: Literal["compact", "normal", "spacious"] = "normal"
+    page_numbering: StrictBool = True
 
 
 class PracticeSheetQuestionSettings(Schema):

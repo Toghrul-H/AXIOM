@@ -108,7 +108,9 @@ def _header_details(settings: PracticeSheetDocumentSettings) -> str:
         details.append("Instructor: " + _plain(settings.header.instructor_name))
     if settings.header.document_date:
         details.append("Date: " + _plain(settings.header.document_date.isoformat()))
-    return (r"\\" + r"\\".join(details)) if details else ""
+    # The title line in the template already ends with `\\`; terminate only
+    # the final detail so following template content starts on a new line.
+    return (r"\\".join(details) + r"\\") if details else ""
 
 
 def _student_metadata(settings: PracticeSheetDocumentSettings, total: int) -> str:
@@ -140,6 +142,7 @@ def render_practice_sheet_document(
         "POINTS_LINE": (rf"\textbf{{Available points:}} {total}" if settings.questions.show_points else ""),
         "MARGIN": _MARGINS[settings.layout.margins],
         "QUESTION_SPACING": _SPACING[settings.layout.question_spacing],
+        "PAGE_STYLE": "plain" if settings.layout.page_numbering else "empty",
         "QUESTION_BLOCKS": _blocks(questions, settings, answer_key=False),
         "ANSWER_KEY_BLOCKS": _blocks(questions, settings, answer_key=True),
     }

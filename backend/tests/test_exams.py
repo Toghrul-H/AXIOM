@@ -115,6 +115,7 @@ def test_finalization_snapshots_answers_and_blocks_mutation(setup):
     assert finalized["snapshot_available"] is True
     snapshot = session.get(Exam, created.id).question_snapshot
     assert snapshot and snapshot["questions"][0]["expected_answer"] == "First reference proof."
+    assert snapshot["document_settings"] == created.document_settings
 
     questions[0].question_text = "Changed after finalization"
     questions[0].expected_answer = "Changed answer"
@@ -188,6 +189,47 @@ def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkey
     assert error.value.status_code == 404
     with pytest.raises(ValueError):
         ExamDocumentType("not-a-document")
+
+
+def test_exam_document_settings_render_safely_and_preserve_legacy_defaults(setup):
+    session, questions, lecturer, _, _ = setup
+    exam = create_exam(session, ExamCreate.model_validate(payload(questions)), lecturer.id)
+    assert exam.document_settings["layout"]["page_numbering"] is True
+    settings = {
+        "header": {
+            "institution_name": "ELTE_50%",
+            "course_name": "DMI & Logic",
+            "instructor_name": "Dr. Example",
+            "document_date": "2026-11-15",
+            "duration_minutes": 90,
+        },
+        "layout": {"margins": "wide", "question_spacing": "spacious", "page_numbering": False},
+        "student_fields": {"show_name": True, "show_neptun_code": False, "show_date": False},
+        "questions": {
+            "show_points": False,
+            "answer_space": "large",
+            "numbering_enabled": False,
+            "page_break_before_question_ids": [questions[1].id],
+        },
+    }
+    update_exam(session, exam.id, ExamPatch.model_validate({"document_settings": settings}))
+    student = render_exam_document(session, exam.id, ExamDocumentType.EXAM)
+    key = render_exam_document(session, exam.id, ExamDocumentType.ANSWER_KEY)
+    assert r"ELTE\_50\%" in student and r"DMI \& Logic" in student
+    assert "Duration: 90 minutes" in student and r"margin=28mm" in student
+    assert r"\setlength{\parskip}{12pt}" in student and r"\pagestyle{empty}" in student
+    assert r"\item[]" in student and r"(4 points)" not in student
+    assert r"\clearpage" in student and r"\vspace{45mm}\hrule" in student
+    assert "First reference proof." not in student and "First reference proof." in key
+    finalized = finalize_exam(session, exam.id)
+    frozen = render_exam_document(session, finalized.id, ExamDocumentType.EXAM)
+    with pytest.raises(HTTPException):
+        update_exam(session, exam.id, ExamPatch.model_validate({"document_settings": settings}))
+    assert render_exam_document(session, finalized.id, ExamDocumentType.EXAM) == frozen
+    with pytest.raises(HTTPException):
+        update_exam(session, exam.id, ExamPatch.model_validate({
+            "document_settings": {"questions": {"page_break_before_question_ids": [999999]}},
+        }))
 
 
 def test_answer_text_normalizes_legacy_unicode_math(setup):

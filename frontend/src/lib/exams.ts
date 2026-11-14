@@ -5,6 +5,54 @@ export type ExamEntry = {
   points: number;
   position: number;
 };
+export type ExamDocumentSettings = {
+  header: {
+    institution_name: string;
+    course_name: string;
+    instructor_name: string | null;
+    document_date: string | null;
+    duration_minutes: number | null;
+  };
+  layout: {
+    paper_size: "A4";
+    margins: "compact" | "normal" | "wide";
+    question_spacing: "compact" | "normal" | "spacious";
+    page_numbering: boolean;
+  };
+  student_fields: {
+    show_name: boolean;
+    show_neptun_code: boolean;
+    show_date: boolean;
+  };
+  questions: {
+    show_points: boolean;
+    answer_space: "none" | "small" | "medium" | "large";
+    numbering_enabled: boolean;
+    page_break_before_question_ids: number[];
+  };
+};
+export const defaultExamDocumentSettings = (): ExamDocumentSettings => ({
+  header: {
+    institution_name: "Eötvös Loránd University",
+    course_name: "Discrete Mathematics I",
+    instructor_name: null,
+    document_date: null,
+    duration_minutes: null,
+  },
+  layout: {
+    paper_size: "A4",
+    margins: "normal",
+    question_spacing: "normal",
+    page_numbering: true,
+  },
+  student_fields: { show_name: true, show_neptun_code: true, show_date: true },
+  questions: {
+    show_points: true,
+    answer_space: "medium",
+    numbering_enabled: true,
+    page_break_before_question_ids: [],
+  },
+});
 export type Exam = {
   id: number;
   title: string;
@@ -16,12 +64,14 @@ export type Exam = {
   created_at: string;
   updated_at: string;
   questions: ExamEntry[];
+  document_settings: ExamDocumentSettings;
   snapshot_available: boolean;
 };
 export type ExamWrite = {
   title: string;
   instructions: string | null;
   questions: Array<Pick<ExamEntry, "question_id" | "points">>;
+  document_settings: ExamDocumentSettings;
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

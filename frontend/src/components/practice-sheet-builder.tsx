@@ -750,6 +750,22 @@ export function PracticeSheetBuilder() {
                     <label>
                       <input
                         type="checkbox"
+                        checked={draft.documentSettings.layout.page_numbering}
+                        onChange={(event) =>
+                          updateDocumentSettings((settings) => ({
+                            ...settings,
+                            layout: {
+                              ...settings.layout,
+                              page_numbering: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      Show page numbers
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
                         checked={draft.documentSettings.header.logo_visible}
                         onChange={(event) =>
                           updateDocumentSettings((settings) => ({
