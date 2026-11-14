@@ -188,3 +188,11 @@ def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkey
     assert error.value.status_code == 404
     with pytest.raises(ValueError):
         ExamDocumentType("not-a-document")
+
+
+def test_answer_text_normalizes_legacy_unicode_math(setup):
+    from app.document_generation.exams import safe_question_text
+
+    rendered = safe_question_text("f ↦ x²: ℕ ∪ ℤ, ∀x ∈ ℝ, x ≠ ∅ ⇒ x ∥ x")
+    for command in ("mapsto", "mathbb{N}", "mathbb{Z}", "forall", "in", "neq", "emptyset", "Rightarrow", "parallel"):
+        assert command in rendered

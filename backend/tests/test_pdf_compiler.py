@@ -64,6 +64,23 @@ def test_compiler_logs_sanitized_diagnostic(configured, monkeypatch, caplog):
         compiler.compile_pdf('trusted source')
     assert error.value.status_code == 422
     assert 'diagnostic=undefined_control_sequence' in caplog.text
+    assert 'line=1' in caplog.text
+    assert 'confidential answer text' not in caplog.text
+
+
+def test_compiler_classifies_math_error_without_logging_document_content(configured, monkeypatch, caplog):
+    def run(args, **kwargs):
+        root = Path(kwargs['cwd'])
+        (root / 'document.log').write_text(
+            'Missing $ inserted.\nl.42 confidential answer text', encoding='utf-8'
+        )
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(compiler.subprocess, 'run', run)
+    with pytest.raises(HTTPException) as error:
+        compiler.compile_pdf('trusted source')
+    assert error.value.status_code == 422
+    assert 'diagnostic=missing_math_delimiter line=42' in caplog.text
     assert 'confidential answer text' not in caplog.text
 
 def test_docker_timeout_removes_container(configured,monkeypatch):

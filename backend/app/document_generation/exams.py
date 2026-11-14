@@ -45,15 +45,26 @@ _UNICODE_MATH_REPLACEMENTS = {
     "·": r"\ensuremath{\cdot}", "×": r"\ensuremath{\times}",
     "Δ": r"\ensuremath{\Delta}", "Σ": r"\ensuremath{\Sigma}",
     "π": r"\ensuremath{\pi}", "→": r"\ensuremath{\to}",
+    "↦": r"\ensuremath{\mapsto}", "↔": r"\ensuremath{\leftrightarrow}",
     "∈": r"\ensuremath{\in}", "−": r"\ensuremath{-}",
     "√": r"\ensuremath{\surd}", "∣": r"\ensuremath{\mid}",
     "∩": r"\ensuremath{\cap}", "∪": r"\ensuremath{\cup}",
-    "≡": r"\ensuremath{\equiv}", "≤": r"\ensuremath{\le}",
-    "≥": r"\ensuremath{\ge}", "⊆": r"\ensuremath{\subseteq}",
-    "◦": r"\ensuremath{\circ}",
+    "≡": r"\ensuremath{\equiv}", "≠": r"\ensuremath{\neq}",
+    "≤": r"\ensuremath{\le}", "≥": r"\ensuremath{\ge}",
+    "≈": r"\ensuremath{\approx}", "∞": r"\ensuremath{\infty}",
+    "⊂": r"\ensuremath{\subset}", "⊃": r"\ensuremath{\supset}",
+    "⊆": r"\ensuremath{\subseteq}", "⊇": r"\ensuremath{\supseteq}",
+    "∅": r"\ensuremath{\emptyset}", "∀": r"\ensuremath{\forall}",
+    "∃": r"\ensuremath{\exists}", "¬": r"\ensuremath{\neg}",
+    "∧": r"\ensuremath{\land}", "∨": r"\ensuremath{\lor}",
+    "⇒": r"\ensuremath{\Rightarrow}", "⇔": r"\ensuremath{\Leftrightarrow}",
+    "∥": r"\ensuremath{\parallel}", "⊥": r"\ensuremath{\perp}",
+    "ℕ": r"\ensuremath{\mathbb{N}}", "ℤ": r"\ensuremath{\mathbb{Z}}",
+    "ℚ": r"\ensuremath{\mathbb{Q}}", "ℝ": r"\ensuremath{\mathbb{R}}",
+    "ℂ": r"\ensuremath{\mathbb{C}}", "◦": r"\ensuremath{\circ}",
 }
-# These aliases are accepted from verified source material but require AMS
-# packages that deliberately are not part of the bounded offline resource set.
+# Preserve compatibility with verified source material that uses this alias.
+# The normalized form is supported by the bounded offline resource set.
 _OFFLINE_MATH_ALIASES = {r"\varnothing": r"\emptyset"}
 
 

@@ -2,6 +2,7 @@
 import logging
 import os
 from pathlib import Path
+import re
 import subprocess
 from tempfile import TemporaryDirectory
 from threading import BoundedSemaphore
@@ -33,6 +34,14 @@ def _compiler_diagnostic(root: Path) -> str:
     text = log_path.read_text(encoding='utf-8', errors='replace')
     if 'Undefined control sequence.' in text:
         return 'undefined_control_sequence'
+    if 'Missing $ inserted.' in text:
+        return 'missing_math_delimiter'
+    if 'Extra }, or forgotten $' in text:
+        return 'malformed_braces_or_math'
+    if 'Runaway argument?' in text:
+        return 'runaway_argument'
+    if "not found" in text and (".sty'" in text or '.sty not found' in text):
+        return 'tex_package_missing'
     if 'Missing character:' in text:
         return 'missing_character'
     if 'Could not locate a virtual/physical font' in text:
@@ -42,6 +51,15 @@ def _compiler_diagnostic(root: Path) -> str:
     if 'Emergency stop.' in text:
         return 'emergency_stop'
     return 'tex_failure'
+
+
+def _compiler_failure_line(root: Path) -> int | None:
+    """Return only a TeX line number; never emit rendered document content."""
+    log_path = root / 'document.log'
+    if not log_path.exists():
+        return None
+    match = re.search(r'(?m)^l\.(\d+)\b', log_path.read_text(encoding='utf-8', errors='replace'))
+    return int(match.group(1)) if match else None
 
 
 def compile_pdf(source: str) -> bytes:
@@ -93,9 +111,11 @@ def compile_pdf(source: str) -> bytes:
                         log.error('PDF container cleanup failed')
             output = root / 'document.pdf'
             if result.returncode != 0 or not output.is_file():
+                diagnostic = _compiler_diagnostic(root)
+                failure_line = _compiler_failure_line(root)
                 log.warning(
-                    'PDF compilation failed category=compiler diagnostic=%s returncode=%s',
-                    _compiler_diagnostic(root), result.returncode,
+                    'PDF compilation failed category=compiler diagnostic=%s line=%s returncode=%s',
+                    diagnostic, failure_line if failure_line is not None else 'unknown', result.returncode,
                 )
                 raise HTTPException(422, 'Could not compile this document. Check its text and retry.')
             if output.stat().st_size > settings.pdf_max_bytes:
