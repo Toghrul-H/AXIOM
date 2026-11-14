@@ -151,13 +151,14 @@ def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkey
         r"Classify $\mathbb{N}$, show $\lvert A\rvert \ge 0$, $\varnothing$, and $\bigcap_i A_i\cdots$, use A ∩ B, x², z̄, and √3, "
         r"and reject $\input{unsafe}$."
     )
+    questions[0].expected_answer = r"For $0\le k\le n$, $\binom nk=\binom n{n-k}$ and $\operatorname{dom}(R)=A$."
     session.commit()
     exam = create_exam(session, ExamCreate.model_validate(payload(questions)), lecturer.id)
     draft_source = render_exam_document(session, exam.id, ExamDocumentType.EXAM)
     assert r"\mathbb{N}" in draft_source and r"\input{unsafe}" not in draft_source
     assert r"\providecommand{\lvert}{|}" in draft_source
     assert r"\ensuremath{\cap}" in draft_source
-    assert r"\textsuperscript{2}" in draft_source
+    assert r"\ensuremath{{}^{2}}" in draft_source
     assert r"$\overline{z}$" in draft_source
     assert r"\ensuremath{\surd}" in draft_source
     assert r"\emptyset" in draft_source and r"\varnothing" not in draft_source
@@ -168,7 +169,10 @@ def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkey
     exam_source = render_exam_document(session, finalized.id, ExamDocumentType.EXAM)
     key_source = render_exam_document(session, finalized.id, ExamDocumentType.ANSWER_KEY)
     assert "First reference proof." not in exam_source
-    assert "First reference proof." in key_source and "First explanation." in key_source
+    assert r"\providecommand{\binom}[2]{{#1 \choose #2}}" in key_source
+    assert r"\providecommand{\operatorname}[1]{\mathrm{#1}}" in key_source
+    assert r"\providecommand{\mathbb}[1]{\mathrm{#1}}" in key_source
+    assert r"\binom nk" in key_source and "First explanation." in key_source
     questions[0].question_text = "Changed after finalization"
     questions[0].expected_answer = "Changed answer"
     session.commit()

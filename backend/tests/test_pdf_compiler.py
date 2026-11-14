@@ -50,6 +50,22 @@ def test_busy_and_source_limit(configured):
     with pytest.raises(HTTPException) as error: compiler.compile_pdf('x'*1_000_001)
     assert error.value.status_code==413
 
+
+def test_compiler_logs_sanitized_diagnostic(configured, monkeypatch, caplog):
+    def run(args, **kwargs):
+        root = Path(kwargs['cwd'])
+        (root / 'document.log').write_text(
+            'Undefined control sequence.\nl.1 confidential answer text', encoding='utf-8'
+        )
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(compiler.subprocess, 'run', run)
+    with pytest.raises(HTTPException) as error:
+        compiler.compile_pdf('trusted source')
+    assert error.value.status_code == 422
+    assert 'diagnostic=undefined_control_sequence' in caplog.text
+    assert 'confidential answer text' not in caplog.text
+
 def test_docker_timeout_removes_container(configured,monkeypatch):
     monkeypatch.setattr(configured,'pdf_compiler_mode','docker')
     calls=[]

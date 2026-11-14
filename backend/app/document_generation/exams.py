@@ -40,8 +40,8 @@ _TEXT_REPLACEMENTS = str.maketrans({
     "ﬁ": "fi", "ﬃ": "ffi",
 })
 _UNICODE_MATH_REPLACEMENTS = {
-    "²": r"\textsuperscript{2}", "³": r"\textsuperscript{3}",
-    "¹": r"\textsuperscript{1}", "⁰": r"\textsuperscript{0}",
+    "²": r"\ensuremath{{}^{2}}", "³": r"\ensuremath{{}^{3}}",
+    "¹": r"\ensuremath{{}^{1}}", "⁰": r"\ensuremath{{}^{0}}",
     "·": r"\ensuremath{\cdot}", "×": r"\ensuremath{\times}",
     "Δ": r"\ensuremath{\Delta}", "Σ": r"\ensuremath{\Sigma}",
     "π": r"\ensuremath{\pi}", "→": r"\ensuremath{\to}",

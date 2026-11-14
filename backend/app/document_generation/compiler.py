@@ -25,6 +25,25 @@ def compiler_source(source: str) -> str:
     }))
 
 
+def _compiler_diagnostic(root: Path) -> str:
+    """Classify a TeX log without retaining question or solution text in logs."""
+    log_path = root / 'document.log'
+    if not log_path.exists():
+        return 'no_log'
+    text = log_path.read_text(encoding='utf-8', errors='replace')
+    if 'Undefined control sequence.' in text:
+        return 'undefined_control_sequence'
+    if 'Missing character:' in text:
+        return 'missing_character'
+    if 'Could not locate a virtual/physical font' in text:
+        return 'font_resource_missing'
+    if 'not loadable: Metric (TFM)' in text:
+        return 'font_metric_missing'
+    if 'Emergency stop.' in text:
+        return 'emergency_stop'
+    return 'tex_failure'
+
+
 def compile_pdf(source: str) -> bytes:
     settings = get_settings()
     if settings.pdf_compiler_mode == 'disabled':
@@ -74,12 +93,15 @@ def compile_pdf(source: str) -> bytes:
                         log.error('PDF container cleanup failed')
             output = root / 'document.pdf'
             if result.returncode != 0 or not output.is_file():
-                log.warning('PDF compilation failed category=compiler')
+                log.warning(
+                    'PDF compilation failed category=compiler diagnostic=%s returncode=%s',
+                    _compiler_diagnostic(root), result.returncode,
+                )
                 raise HTTPException(422, 'Could not compile this document. Check its text and retry.')
             if output.stat().st_size > settings.pdf_max_bytes:
                 raise HTTPException(413, 'Generated PDF exceeds the download size limit.')
-            compiler_log = root / 'document.log'
-            if compiler_log.exists() and 'Missing character:' in compiler_log.read_text(encoding='utf-8', errors='replace'):
+            if _compiler_diagnostic(root) == 'missing_character':
+                log.warning('PDF compilation failed category=font diagnostic=missing_character')
                 raise HTTPException(422, 'The PDF font cannot display a character in this document. Review the text.')
             pdf = output.read_bytes()
             if not pdf.startswith(b'%PDF-'):

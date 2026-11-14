@@ -190,12 +190,18 @@ def test_document_settings_defaults_validation_and_finalization_consistency(setu
 
 def test_variant_documents_are_snapshot_based_and_confidential(setup, monkeypatch):
     session, questions, lecturer, _, student = setup
+    questions[0].expected_answer = r"For $0\le k\le n$, $\binom nk=\binom n{n-k}$ and $\operatorname{dom}(R)=A$."
+    session.commit()
     sheet = create_practice_sheet(session, PracticeSheetCreate.model_validate(payload(questions)), lecturer.id)
     variant = generate_variants(session, sheet.id, VariantGenerate.model_validate({"labels": ["A"], "seed": "pdf"}))[0]
     student_source = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.SHEET)
     key_source = render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.ANSWER_KEY)
     assert "Reference answer 1." not in student_source
     assert "Reference answer" in key_source and "Explanation" in key_source
+    assert r"\providecommand{\binom}[2]{{#1 \choose #2}}" in key_source
+    assert r"\providecommand{\operatorname}[1]{\mathrm{#1}}" in key_source
+    assert r"\providecommand{\mathbb}[1]{\mathrm{#1}}" in key_source
+    assert r"\binom nk" in key_source
     questions[0].question_text = "Changed after generation"
     questions[0].expected_answer = "Changed after generation"
     session.commit()
