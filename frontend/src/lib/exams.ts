@@ -1,7 +1,10 @@
 import { apiFetch } from "./auth";
 import {
   downloadPdfDocument,
+  downloadLatexDocument,
   fetchPdfDocument,
+  fetchLatexDocument,
+  type LatexDocument,
   type PdfDocument,
 } from "./pdf-document";
 
@@ -120,4 +123,23 @@ export function getExamPdf(
 
 export async function downloadExamPdf(id: number, kind: "exam" | "answer-key") {
   downloadPdfDocument(await getExamPdf(id, kind));
+}
+
+export function getExamLatex(
+  id: number,
+  kind: "exam" | "answer-key",
+  signal?: AbortSignal,
+): Promise<LatexDocument> {
+  return fetchLatexDocument(
+    `/exams/${id}/documents/${kind}/tex`,
+    `axiom-exam-${id}-${kind}.tex`,
+    signal,
+  );
+}
+
+export async function downloadExamLatex(
+  id: number,
+  kind: "exam" | "answer-key",
+) {
+  downloadLatexDocument(await getExamLatex(id, kind));
 }

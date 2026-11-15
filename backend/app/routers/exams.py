@@ -10,7 +10,7 @@ from app.database import get_session
 from app.exam_schemas import ExamCreate, ExamPatch, ExamRead
 from app.document_generation.compiler import compile_pdf
 from app.document_generation.exams import ExamDocumentType, render_exam_document
-from app.document_generation.filenames import exam_pdf_filename
+from app.document_generation.filenames import exam_pdf_filename, exam_tex_filename
 from app.services.exams import create_exam, delete_exam, finalize_exam, get_exam, list_exams, read_exam, update_exam
 
 router = APIRouter(prefix="/exams", tags=["Exams"])
@@ -57,6 +57,18 @@ def download_document(exam_id: Id, document_type: ExamDocumentType, session: DB,
     session.rollback()
     pdf = compile_pdf(source)
     return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    })
+
+
+@router.get("/{exam_id}/documents/{document_type}/tex")
+def download_latex(exam_id: Id, document_type: ExamDocumentType, session: DB, actor: Manager):
+    source = render_exam_document(session, exam_id, document_type)
+    filename = exam_tex_filename(get_exam(session, exam_id), document_type)
+    # Source export is read-only and deliberately does not invoke Tectonic.
+    session.rollback()
+    return Response(source, media_type="text/x-tex", headers={
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     })

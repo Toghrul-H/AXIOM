@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 import {
+  downloadExamLatex,
   downloadExamPdf,
   defaultExamDocumentSettings,
   examsApi,
@@ -66,6 +67,9 @@ export function ExamBuilder() {
   const [downloading, setDownloading] = useState<"exam" | "answer-key" | null>(
     null,
   );
+  const [exportingLatex, setExportingLatex] = useState<
+    "exam" | "answer-key" | null
+  >(null);
   const [previewKind, setPreviewKind] = useState<"exam" | "answer-key" | null>(
     null,
   );
@@ -306,7 +310,7 @@ export function ExamBuilder() {
     }
   }
   async function download(kind: "exam" | "answer-key") {
-    if (draft.id === null || downloading) return;
+    if (draft.id === null || downloading || exportingLatex) return;
     if (dirty) {
       setError(
         "You have unsaved changes. Please save before downloading a PDF.",
@@ -325,6 +329,26 @@ export function ExamBuilder() {
       );
     } finally {
       setDownloading(null);
+    }
+  }
+  async function downloadLatex(kind: "exam" | "answer-key") {
+    if (draft.id === null || downloading || exportingLatex) return;
+    if (dirty) {
+      setError("You have unsaved changes. Please save before exporting LaTeX.");
+      return;
+    }
+    setExportingLatex(kind);
+    setError("");
+    try {
+      await downloadExamLatex(draft.id, kind);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not export this LaTeX source.",
+      );
+    } finally {
+      setExportingLatex(null);
     }
   }
   function preview(kind: "exam" | "answer-key") {
@@ -470,7 +494,9 @@ export function ExamBuilder() {
                     className="button button-secondary"
                     type="button"
                     onClick={() => preview("exam")}
-                    disabled={downloading !== null || dirty}
+                    disabled={
+                      downloading !== null || exportingLatex !== null || dirty
+                    }
                   >
                     Preview Exam PDF
                   </button>
@@ -478,7 +504,9 @@ export function ExamBuilder() {
                     className="button button-secondary"
                     type="button"
                     onClick={() => void download("exam")}
-                    disabled={downloading !== null || dirty}
+                    disabled={
+                      downloading !== null || exportingLatex !== null || dirty
+                    }
                   >
                     {downloading === "exam"
                       ? "Generating exam…"
@@ -487,8 +515,22 @@ export function ExamBuilder() {
                   <button
                     className="button button-secondary"
                     type="button"
+                    onClick={() => void downloadLatex("exam")}
+                    disabled={
+                      downloading !== null || exportingLatex !== null || dirty
+                    }
+                  >
+                    {exportingLatex === "exam"
+                      ? "Exporting LaTeX…"
+                      : "Download Exam LaTeX (.tex)"}
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    type="button"
                     onClick={() => preview("answer-key")}
-                    disabled={downloading !== null || dirty}
+                    disabled={
+                      downloading !== null || exportingLatex !== null || dirty
+                    }
                   >
                     Preview Answer Key PDF
                   </button>
@@ -496,11 +538,25 @@ export function ExamBuilder() {
                     className="button button-secondary"
                     type="button"
                     onClick={() => void download("answer-key")}
-                    disabled={downloading !== null || dirty}
+                    disabled={
+                      downloading !== null || exportingLatex !== null || dirty
+                    }
                   >
                     {downloading === "answer-key"
                       ? "Generating key…"
                       : "Download Answer Key PDF"}
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    onClick={() => void downloadLatex("answer-key")}
+                    disabled={
+                      downloading !== null || exportingLatex !== null || dirty
+                    }
+                  >
+                    {exportingLatex === "answer-key"
+                      ? "Exporting LaTeX…"
+                      : "Download Answer Key LaTeX (.tex)"}
                   </button>
                 </div>
               )}

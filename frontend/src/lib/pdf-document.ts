@@ -4,6 +4,7 @@ export type PdfDocument = {
   blob: Blob;
   filename: string;
 };
+export type LatexDocument = PdfDocument;
 
 function filenameFrom(response: Response, fallback: string) {
   return (
@@ -36,6 +37,29 @@ export async function fetchPdfDocument(
   return { blob, filename: filenameFrom(response, fallbackFilename) };
 }
 
+/** Fetch an authenticated, non-persistent LaTeX source export. */
+export async function fetchLatexDocument(
+  path: string,
+  fallbackFilename: string,
+  signal?: AbortSignal,
+): Promise<LatexDocument> {
+  const response = await apiFetch(path, { signal, cache: "no-store" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string"
+        ? body.detail
+        : "LaTeX export failed. Please retry.",
+    );
+  }
+  if (!response.headers.get("content-type")?.startsWith("text/x-tex"))
+    throw new Error("The server did not return LaTeX source. Please retry.");
+  const blob = await response.blob();
+  if (blob.size === 0)
+    throw new Error("The server returned empty LaTeX source. Please retry.");
+  return { blob, filename: filenameFrom(response, fallbackFilename) };
+}
+
 /** Download bytes already obtained for a preview without another API request. */
 export function downloadPdfDocument(pdf: PdfDocument) {
   const url = URL.createObjectURL(pdf.blob);
@@ -49,4 +73,8 @@ export function downloadPdfDocument(pdf: PdfDocument) {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+}
+
+export function downloadLatexDocument(source: LatexDocument) {
+  downloadPdfDocument(source);
 }

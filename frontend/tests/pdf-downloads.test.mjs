@@ -57,6 +57,15 @@ function pdf(name) {
   });
 }
 
+function tex(name) {
+  return new Response("\\documentclass{article}", {
+    headers: {
+      "content-type": "text/x-tex; charset=utf-8",
+      "content-disposition": `attachment; filename="${name}"`,
+    },
+  });
+}
+
 function library(path, apiFetch, dom) {
   const pdf = load("lib/pdf-document.ts", { "./auth": { apiFetch } }, dom);
   return load(path, { "./auth": { apiFetch }, "./pdf-document": pdf }, dom);
@@ -117,6 +126,42 @@ test("a fetched preview is downloaded without a second request and releases its 
   assert.deepEqual(dom.revoked, ["blob:pdf-1"]);
 });
 
+test("all four LaTeX exports preserve authenticated paths and backend filenames", async () => {
+  const dom = browser();
+  const paths = [];
+  const names = ["exam.tex", "answer-key.tex", "sheet.tex", "sheet-key.tex"];
+  const apiFetch = async (path) => {
+    paths.push(path);
+    return tex(names[paths.length - 1]);
+  };
+  const exams = library("lib/exams.ts", apiFetch, dom);
+  const sheets = library("lib/practice-sheets.ts", apiFetch, dom);
+  const source = await exams.getExamLatex(12, "exam");
+  assert.equal(source.filename, "exam.tex");
+  const pdfDocument = load(
+    "lib/pdf-document.ts",
+    { "./auth": { apiFetch } },
+    dom,
+  );
+  pdfDocument.downloadLatexDocument(source);
+  assert.equal(dom.links[0].download, "exam.tex");
+  assert.equal((await exams.getExamLatex(12, "answer-key")).filename, names[1]);
+  assert.equal(
+    (await sheets.getPracticeSheetLatex(4, 9, "sheet")).filename,
+    names[2],
+  );
+  assert.equal(
+    (await sheets.getPracticeSheetLatex(4, 9, "answer-key")).filename,
+    names[3],
+  );
+  assert.deepEqual(paths, [
+    "/exams/12/documents/exam/tex",
+    "/exams/12/documents/answer-key/tex",
+    "/practice-sheets/4/variants/9/documents/sheet/tex",
+    "/practice-sheets/4/variants/9/documents/answer-key/tex",
+  ]);
+});
+
 test("invalid responses, empty files, and abort signals are handled safely", async () => {
   const dom = browser();
   const invalid = load(
@@ -127,6 +172,10 @@ test("invalid responses, empty files, and abort signals are handled safely", asy
   await assert.rejects(
     invalid.fetchPdfDocument("/x", "x.pdf"),
     /did not return a PDF/,
+  );
+  await assert.rejects(
+    invalid.fetchLatexDocument("/x", "x.tex"),
+    /did not return LaTeX source/,
   );
   const empty = load(
     "lib/pdf-document.ts",

@@ -235,6 +235,21 @@ def test_variant_documents_are_snapshot_based_and_confidential(setup, monkeypatc
     )
     assert key_response.headers["content-disposition"] == f'attachment; filename="Logic_practice_Undated_A_Practice_Sheet_{sheet.id}_{variant.id}_Answer_Key.pdf"'
     assert response.headers["cache-control"] == "no-store"
+    monkeypatch.setattr(practice_sheet_router, "compile_pdf", lambda source: pytest.fail("LaTeX export must not compile"))
+    tex_response = practice_sheet_router.download_latex(
+        sheet.id, variant.id, PracticeSheetDocumentType.SHEET, session, lecturer
+    )
+    key_tex_response = practice_sheet_router.download_latex(
+        sheet.id, variant.id, PracticeSheetDocumentType.ANSWER_KEY, session, lecturer
+    )
+    assert tex_response.headers["content-type"].startswith("text/x-tex")
+    assert tex_response.headers["content-disposition"] == f'attachment; filename="Logic_practice_Undated_A_Practice_Sheet_{sheet.id}_{variant.id}.tex"'
+    assert key_tex_response.headers["content-disposition"] == f'attachment; filename="Logic_practice_Undated_A_Practice_Sheet_{sheet.id}_{variant.id}_Answer_Key.tex"'
+    assert tex_response.headers["cache-control"] == "no-store"
+    assert tex_response.body.decode() == render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.SHEET)
+    assert key_tex_response.body.decode() == render_practice_sheet_document(session, sheet.id, variant.id, PracticeSheetDocumentType.ANSWER_KEY)
+    assert b"Reference answer" not in tex_response.body
+    assert b"Reference answer" in key_tex_response.body
 
 
 def test_variant_documents_apply_validated_document_settings(setup):

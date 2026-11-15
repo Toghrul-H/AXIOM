@@ -186,6 +186,17 @@ def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkey
     key_response = exam_router.download_document(finalized.id, ExamDocumentType.ANSWER_KEY, session, lecturer)
     assert key_response.headers["content-disposition"] == f'attachment; filename="Midterm_A_Undated_Exam_{finalized.id}_Answer_Key.pdf"'
     assert response.headers["cache-control"] == "no-store"
+    monkeypatch.setattr(exam_router, "compile_pdf", lambda source: pytest.fail("LaTeX export must not compile"))
+    tex_response = exam_router.download_latex(finalized.id, ExamDocumentType.EXAM, session, lecturer)
+    key_tex_response = exam_router.download_latex(finalized.id, ExamDocumentType.ANSWER_KEY, session, lecturer)
+    assert tex_response.headers["content-type"].startswith("text/x-tex")
+    assert tex_response.headers["content-disposition"] == f'attachment; filename="Midterm_A_Undated_Exam_{finalized.id}.tex"'
+    assert key_tex_response.headers["content-disposition"] == f'attachment; filename="Midterm_A_Undated_Exam_{finalized.id}_Answer_Key.tex"'
+    assert tex_response.headers["cache-control"] == "no-store"
+    assert tex_response.body.decode() == render_exam_document(session, finalized.id, ExamDocumentType.EXAM)
+    assert key_tex_response.body.decode() == render_exam_document(session, finalized.id, ExamDocumentType.ANSWER_KEY)
+    assert b"Second reference proof." not in tex_response.body
+    assert b"Second reference proof." in key_tex_response.body
     with pytest.raises(HTTPException) as error:
         render_exam_document(session, 999999, ExamDocumentType.EXAM)
     assert error.value.status_code == 404

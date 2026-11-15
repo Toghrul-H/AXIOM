@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import {
+  downloadPracticeSheetLatex,
   downloadPracticeSheetPdf,
   defaultPracticeSheetDocumentSettings,
   getPracticeSheetPdf,
@@ -85,6 +86,7 @@ export function PracticeSheetBuilder() {
   const [questionsPerVariant, setQuestionsPerVariant] = useState("");
   const [variantSeed, setVariantSeed] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [exportingLatex, setExportingLatex] = useState<string | null>(null);
   const [previewDocument, setPreviewDocument] = useState<{
     variantId: number;
     kind: "sheet" | "answer-key";
@@ -403,7 +405,7 @@ export function PracticeSheetBuilder() {
     }
   }
   async function download(variantId: number, kind: "sheet" | "answer-key") {
-    if (draft.id === null || downloading) return;
+    if (draft.id === null || downloading || exportingLatex) return;
     if (dirty) {
       setError(
         "You have unsaved changes. Please save before downloading a PDF.",
@@ -423,6 +425,30 @@ export function PracticeSheetBuilder() {
       );
     } finally {
       setDownloading(null);
+    }
+  }
+  async function downloadLatex(
+    variantId: number,
+    kind: "sheet" | "answer-key",
+  ) {
+    if (draft.id === null || downloading || exportingLatex) return;
+    if (dirty) {
+      setError("You have unsaved changes. Please save before exporting LaTeX.");
+      return;
+    }
+    const key = `${variantId}:${kind}`;
+    setExportingLatex(key);
+    setError("");
+    try {
+      await downloadPracticeSheetLatex(draft.id, variantId, kind);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not export this LaTeX source.",
+      );
+    } finally {
+      setExportingLatex(null);
     }
   }
   function preview(variantId: number, kind: "sheet" | "answer-key") {
@@ -565,7 +591,11 @@ export function PracticeSheetBuilder() {
                           type="button"
                           className="button button-secondary"
                           onClick={() => preview(draft.variants[0].id, "sheet")}
-                          disabled={downloading !== null || dirty}
+                          disabled={
+                            downloading !== null ||
+                            exportingLatex !== null ||
+                            dirty
+                          }
                         >
                           Preview Student PDF
                         </button>
@@ -575,7 +605,11 @@ export function PracticeSheetBuilder() {
                           onClick={() =>
                             void download(draft.variants[0].id, "sheet")
                           }
-                          disabled={downloading !== null || dirty}
+                          disabled={
+                            downloading !== null ||
+                            exportingLatex !== null ||
+                            dirty
+                          }
                         >
                           {downloading === `${draft.variants[0].id}:sheet`
                             ? "Generating…"
@@ -585,9 +619,29 @@ export function PracticeSheetBuilder() {
                           type="button"
                           className="button button-secondary"
                           onClick={() =>
+                            void downloadLatex(draft.variants[0].id, "sheet")
+                          }
+                          disabled={
+                            downloading !== null ||
+                            exportingLatex !== null ||
+                            dirty
+                          }
+                        >
+                          {exportingLatex === `${draft.variants[0].id}:sheet`
+                            ? "Exporting LaTeX…"
+                            : "Download Student LaTeX (.tex)"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          onClick={() =>
                             preview(draft.variants[0].id, "answer-key")
                           }
-                          disabled={downloading !== null || dirty}
+                          disabled={
+                            downloading !== null ||
+                            exportingLatex !== null ||
+                            dirty
+                          }
                         >
                           Preview Answer Key PDF
                         </button>
@@ -597,11 +651,35 @@ export function PracticeSheetBuilder() {
                           onClick={() =>
                             void download(draft.variants[0].id, "answer-key")
                           }
-                          disabled={downloading !== null || dirty}
+                          disabled={
+                            downloading !== null ||
+                            exportingLatex !== null ||
+                            dirty
+                          }
                         >
                           {downloading === `${draft.variants[0].id}:answer-key`
                             ? "Generating…"
                             : "Download Answer Key PDF"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          onClick={() =>
+                            void downloadLatex(
+                              draft.variants[0].id,
+                              "answer-key",
+                            )
+                          }
+                          disabled={
+                            downloading !== null ||
+                            exportingLatex !== null ||
+                            dirty
+                          }
+                        >
+                          {exportingLatex ===
+                          `${draft.variants[0].id}:answer-key`
+                            ? "Exporting LaTeX…"
+                            : "Download Answer Key LaTeX (.tex)"}
                         </button>
                       </>
                     ) : (
@@ -1119,7 +1197,11 @@ export function PracticeSheetBuilder() {
                             type="button"
                             className="button button-secondary"
                             onClick={() => preview(variant.id, "sheet")}
-                            disabled={downloading !== null || dirty}
+                            disabled={
+                              downloading !== null ||
+                              exportingLatex !== null ||
+                              dirty
+                            }
                           >
                             Preview Student PDF
                           </button>
@@ -1127,7 +1209,11 @@ export function PracticeSheetBuilder() {
                             type="button"
                             className="button button-secondary"
                             onClick={() => void download(variant.id, "sheet")}
-                            disabled={downloading !== null || dirty}
+                            disabled={
+                              downloading !== null ||
+                              exportingLatex !== null ||
+                              dirty
+                            }
                           >
                             {downloading === `${variant.id}:sheet`
                               ? "Generating…"
@@ -1136,8 +1222,28 @@ export function PracticeSheetBuilder() {
                           <button
                             type="button"
                             className="button button-secondary"
+                            onClick={() =>
+                              void downloadLatex(variant.id, "sheet")
+                            }
+                            disabled={
+                              downloading !== null ||
+                              exportingLatex !== null ||
+                              dirty
+                            }
+                          >
+                            {exportingLatex === `${variant.id}:sheet`
+                              ? "Exporting LaTeX…"
+                              : "Download Student LaTeX (.tex)"}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
                             onClick={() => preview(variant.id, "answer-key")}
-                            disabled={downloading !== null || dirty}
+                            disabled={
+                              downloading !== null ||
+                              exportingLatex !== null ||
+                              dirty
+                            }
                           >
                             Preview Answer Key PDF
                           </button>
@@ -1147,11 +1253,31 @@ export function PracticeSheetBuilder() {
                             onClick={() =>
                               void download(variant.id, "answer-key")
                             }
-                            disabled={downloading !== null || dirty}
+                            disabled={
+                              downloading !== null ||
+                              exportingLatex !== null ||
+                              dirty
+                            }
                           >
                             {downloading === `${variant.id}:answer-key`
                               ? "Generating…"
                               : "Download Answer Key PDF"}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            onClick={() =>
+                              void downloadLatex(variant.id, "answer-key")
+                            }
+                            disabled={
+                              downloading !== null ||
+                              exportingLatex !== null ||
+                              dirty
+                            }
+                          >
+                            {exportingLatex === `${variant.id}:answer-key`
+                              ? "Exporting LaTeX…"
+                              : "Download Answer Key LaTeX (.tex)"}
                           </button>
                         </div>
                       </li>

@@ -31,11 +31,13 @@ def _date_text(settings: object) -> str:
     return "Undated"
 
 
-def _filename(title: object, settings: object, *parts: object) -> str:
+def _filename(title: object, settings: object, *parts: object, extension: str = ".pdf") -> str:
+    if extension not in {".pdf", ".tex"}:
+        raise ValueError("Unsupported document filename extension")
     suffix = "_".join((_date_text(settings), *(_segment(part, "Document") for part in parts)))
-    title_limit = _MAX_FILENAME_LENGTH - len(suffix) - len("_.pdf")
+    title_limit = _MAX_FILENAME_LENGTH - len(suffix) - len("_") - len(extension)
     safe_title = _segment(title, "AXIOM_Document")[:max(1, title_limit)]
-    return f"{safe_title}_{suffix}.pdf"
+    return f"{safe_title}_{suffix}{extension}"
 
 
 def _exam_settings(exam: object) -> object:
@@ -47,21 +49,37 @@ def _exam_settings(exam: object) -> object:
     return settings
 
 
-def exam_pdf_filename(exam: object, document_type: object) -> str:
+def _exam_filename(exam: object, document_type: object, extension: str) -> str:
     kind = getattr(document_type, "value", str(document_type))
     if kind not in {"exam", "answer-key"}:
         raise ValueError("Unsupported exam document type")
     parts: list[object] = ["Exam", getattr(exam, "id")]
     if kind == "answer-key":
         parts.extend(("Answer", "Key"))
-    return _filename(getattr(exam, "title"), _exam_settings(exam), *parts)
+    return _filename(getattr(exam, "title"), _exam_settings(exam), *parts, extension=extension)
 
 
-def practice_sheet_pdf_filename(sheet: object, variant: object, document_type: object) -> str:
+def exam_pdf_filename(exam: object, document_type: object) -> str:
+    return _exam_filename(exam, document_type, ".pdf")
+
+
+def exam_tex_filename(exam: object, document_type: object) -> str:
+    return _exam_filename(exam, document_type, ".tex")
+
+
+def _practice_sheet_filename(sheet: object, variant: object, document_type: object, extension: str) -> str:
     kind = getattr(document_type, "value", str(document_type))
     if kind not in {"sheet", "answer-key"}:
         raise ValueError("Unsupported practice-sheet document type")
     parts: list[object] = [getattr(variant, "label"), "Practice", "Sheet", getattr(sheet, "id"), getattr(variant, "id")]
     if kind == "answer-key":
         parts.extend(("Answer", "Key"))
-    return _filename(getattr(sheet, "title"), getattr(sheet, "document_settings", {}), *parts)
+    return _filename(getattr(sheet, "title"), getattr(sheet, "document_settings", {}), *parts, extension=extension)
+
+
+def practice_sheet_pdf_filename(sheet: object, variant: object, document_type: object) -> str:
+    return _practice_sheet_filename(sheet, variant, document_type, ".pdf")
+
+
+def practice_sheet_tex_filename(sheet: object, variant: object, document_type: object) -> str:
+    return _practice_sheet_filename(sheet, variant, document_type, ".tex")

@@ -1,6 +1,11 @@
 from types import SimpleNamespace
 
-from app.document_generation.filenames import exam_pdf_filename, practice_sheet_pdf_filename
+from app.document_generation.filenames import (
+    exam_pdf_filename,
+    exam_tex_filename,
+    practice_sheet_pdf_filename,
+    practice_sheet_tex_filename,
+)
 
 
 def settings(value=None):
@@ -11,6 +16,7 @@ def test_exam_filenames_use_saved_or_frozen_dates_and_distinct_ids():
     exam = SimpleNamespace(id=42, title="Mídtérm / 2026\r\n", status="draft", document_settings=settings("2026-11-15"), question_snapshot=None)
     assert exam_pdf_filename(exam, "exam") == "Midterm_2026_15.11.2026_Exam_42.pdf"
     assert exam_pdf_filename(exam, "answer-key") == "Midterm_2026_15.11.2026_Exam_42_Answer_Key.pdf"
+    assert exam_tex_filename(exam, "exam") == "Midterm_2026_15.11.2026_Exam_42.tex"
     other = SimpleNamespace(**{**exam.__dict__, "id": 43})
     assert exam_pdf_filename(other, "exam") != exam_pdf_filename(exam, "exam")
 
@@ -30,6 +36,7 @@ def test_practice_filenames_include_immutable_variant_identity_and_handle_missin
     variant_b = SimpleNamespace(id=18, label="B")
     assert practice_sheet_pdf_filename(sheet, variant_a, "sheet") == "Practice_Sheet_Undated_A_Practice_Sheet_9_17.pdf"
     assert practice_sheet_pdf_filename(sheet, variant_a, "answer-key") == "Practice_Sheet_Undated_A_Practice_Sheet_9_17_Answer_Key.pdf"
+    assert practice_sheet_tex_filename(sheet, variant_a, "answer-key") == "Practice_Sheet_Undated_A_Practice_Sheet_9_17_Answer_Key.tex"
     assert practice_sheet_pdf_filename(sheet, variant_a, "sheet") != practice_sheet_pdf_filename(sheet, variant_b, "sheet")
 
 

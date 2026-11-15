@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 const paths: Record<string, RegExp> = {
-  GET: /^(?:|[1-9][0-9]*(?:\/documents\/(?:exam|answer-key)\/pdf)?)$/,
+  GET: /^(?:|[1-9][0-9]*(?:\/documents\/(?:exam|answer-key)\/(?:pdf|tex))?)$/,
   POST: /^(?:|[1-9][0-9]*\/finalize)$/,
   PATCH: /^[1-9][0-9]*$/,
   DELETE: /^[1-9][0-9]*$/,

@@ -1,7 +1,10 @@
 import { apiFetch } from "./auth";
 import {
   downloadPdfDocument,
+  downloadLatexDocument,
   fetchPdfDocument,
+  fetchLatexDocument,
+  type LatexDocument,
   type PdfDocument,
 } from "./pdf-document";
 
@@ -143,4 +146,25 @@ export async function downloadPracticeSheetPdf(
   kind: "sheet" | "answer-key",
 ) {
   downloadPdfDocument(await getPracticeSheetPdf(sheetId, variantId, kind));
+}
+
+export function getPracticeSheetLatex(
+  sheetId: number,
+  variantId: number,
+  kind: "sheet" | "answer-key",
+  signal?: AbortSignal,
+): Promise<LatexDocument> {
+  return fetchLatexDocument(
+    `/practice-sheets/${sheetId}/variants/${variantId}/documents/${kind}/tex`,
+    `axiom-practice-sheet-${sheetId}-${variantId}-${kind}.tex`,
+    signal,
+  );
+}
+
+export async function downloadPracticeSheetLatex(
+  sheetId: number,
+  variantId: number,
+  kind: "sheet" | "answer-key",
+) {
+  downloadLatexDocument(await getPracticeSheetLatex(sheetId, variantId, kind));
 }
