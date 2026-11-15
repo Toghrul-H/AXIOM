@@ -8,6 +8,7 @@ from app.auth import manager_user
 from app.auth_models import User
 from app.database import get_session
 from app.document_generation.compiler import compile_pdf
+from app.document_generation.filenames import practice_sheet_pdf_filename
 from app.document_generation.practice_sheets import PracticeSheetDocumentType, render_practice_sheet_document
 from app.practice_sheet_schemas import PracticeSheetCreate, PracticeSheetPatch, PracticeSheetRead, PracticeSheetVariantRead, VariantGenerate
 from app.services.practice_sheets import (
@@ -66,10 +67,12 @@ def download_document(
     sheet_id: Id, variant_id: VariantId, document_type: PracticeSheetDocumentType, session: DB, actor: Manager
 ):
     source = render_practice_sheet_document(session, sheet_id, variant_id, document_type)
+    sheet = get_practice_sheet(session, sheet_id)
+    variant = next(item for item in sheet.variants if item.id == variant_id)
+    filename = practice_sheet_pdf_filename(sheet, variant, document_type)
     # Rendering reads only immutable snapshots; release this transaction before compilation.
     session.rollback()
     pdf = compile_pdf(source)
-    filename = f"axiom-practice-sheet-{sheet_id}-{variant_id}-{document_type.value}.pdf"
     return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",

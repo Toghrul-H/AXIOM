@@ -65,21 +65,27 @@ function library(path, apiFetch, dom) {
 test("all four preview fetches use the same-origin PDF paths and backend filenames", async () => {
   const dom = browser();
   const paths = [];
+  const names = [
+    "Midterm_15.11.2026_Exam_42.pdf",
+    "Midterm_15.11.2026_Exam_42_Answer_Key.pdf",
+    "Practice_Sheet_15.11.2026_A_Practice_Sheet_9_17.pdf",
+    "Practice_Sheet_15.11.2026_A_Practice_Sheet_9_17_Answer_Key.pdf",
+  ];
   const apiFetch = async (path) => {
     paths.push(path);
-    return pdf(`${paths.length}.pdf`);
+    return pdf(names[paths.length - 1]);
   };
   const exams = library("lib/exams.ts", apiFetch, dom);
   const sheets = library("lib/practice-sheets.ts", apiFetch, dom);
-  assert.equal((await exams.getExamPdf(12, "exam")).filename, "1.pdf");
-  assert.equal((await exams.getExamPdf(12, "answer-key")).filename, "2.pdf");
+  assert.equal((await exams.getExamPdf(12, "exam")).filename, names[0]);
+  assert.equal((await exams.getExamPdf(12, "answer-key")).filename, names[1]);
   assert.equal(
     (await sheets.getPracticeSheetPdf(4, 9, "sheet")).filename,
-    "3.pdf",
+    names[2],
   );
   assert.equal(
     (await sheets.getPracticeSheetPdf(4, 9, "answer-key")).filename,
-    "4.pdf",
+    names[3],
   );
   assert.deepEqual(paths, [
     "/exams/12/documents/exam/pdf",

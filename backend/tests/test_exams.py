@@ -182,7 +182,9 @@ def test_exam_and_answer_key_documents_are_safe_and_snapshot_based(setup, monkey
     monkeypatch.setattr(exam_router, "compile_pdf", lambda source: b"%PDF-1.7\nmock")
     response = exam_router.download_document(finalized.id, ExamDocumentType.EXAM, session, lecturer)
     assert response.body.startswith(b"%PDF-")
-    assert response.headers["content-disposition"].endswith('exam.pdf"')
+    assert response.headers["content-disposition"] == f'attachment; filename="Midterm_A_Undated_Exam_{finalized.id}.pdf"'
+    key_response = exam_router.download_document(finalized.id, ExamDocumentType.ANSWER_KEY, session, lecturer)
+    assert key_response.headers["content-disposition"] == f'attachment; filename="Midterm_A_Undated_Exam_{finalized.id}_Answer_Key.pdf"'
     assert response.headers["cache-control"] == "no-store"
     with pytest.raises(HTTPException) as error:
         render_exam_document(session, 999999, ExamDocumentType.EXAM)

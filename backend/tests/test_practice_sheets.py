@@ -229,7 +229,11 @@ def test_variant_documents_are_snapshot_based_and_confidential(setup, monkeypatc
         sheet.id, variant.id, PracticeSheetDocumentType.SHEET, session, lecturer
     )
     assert response.body.startswith(b"%PDF-")
-    assert response.headers["content-disposition"].endswith('sheet.pdf"')
+    assert response.headers["content-disposition"] == f'attachment; filename="Logic_practice_Undated_A_Practice_Sheet_{sheet.id}_{variant.id}.pdf"'
+    key_response = practice_sheet_router.download_document(
+        sheet.id, variant.id, PracticeSheetDocumentType.ANSWER_KEY, session, lecturer
+    )
+    assert key_response.headers["content-disposition"] == f'attachment; filename="Logic_practice_Undated_A_Practice_Sheet_{sheet.id}_{variant.id}_Answer_Key.pdf"'
     assert response.headers["cache-control"] == "no-store"
 
 
