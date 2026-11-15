@@ -62,6 +62,18 @@ def _compiler_failure_line(root: Path) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _compiler_resource(root: Path) -> str:
+    """Return a TeX resource filename only; never expose document content."""
+    log_path = root / 'document.log'
+    if not log_path.exists():
+        return 'unknown'
+    match = re.search(
+        r'\b([A-Za-z][A-Za-z0-9._-]{0,100}\.(?:pfb|tfm|sty))\b',
+        log_path.read_text(encoding='utf-8', errors='replace'),
+    )
+    return match.group(1) if match else 'unknown'
+
+
 def compile_pdf(source: str) -> bytes:
     settings = get_settings()
     if settings.pdf_compiler_mode == 'disabled':
@@ -113,9 +125,12 @@ def compile_pdf(source: str) -> bytes:
             if result.returncode != 0 or not output.is_file():
                 diagnostic = _compiler_diagnostic(root)
                 failure_line = _compiler_failure_line(root)
+                resource = _compiler_resource(root) if diagnostic in {
+                    'font_resource_missing', 'font_metric_missing', 'tex_package_missing'
+                } else 'none'
                 log.warning(
-                    'PDF compilation failed category=compiler diagnostic=%s line=%s returncode=%s',
-                    diagnostic, failure_line if failure_line is not None else 'unknown', result.returncode,
+                    'PDF compilation failed category=compiler diagnostic=%s resource=%s line=%s returncode=%s',
+                    diagnostic, resource, failure_line if failure_line is not None else 'unknown', result.returncode,
                 )
                 raise HTTPException(422, 'Could not compile this document. Check its text and retry.')
             if output.stat().st_size > settings.pdf_max_bytes:

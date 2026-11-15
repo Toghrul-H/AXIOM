@@ -17,7 +17,8 @@ containing:
 Warm a fresh cache in a disposable, network-enabled image before creating a
 new resource image. The tracked warm-up source covers the Computer Modern math
 fonts used by student and answer-key notation, including binomial-coefficient
-script fonts such as `cmsy8.pfb`:
+script fonts such as `cmsy8.pfb` and the 11pt answer-key upright script font
+`cmr6.pfb`:
 
 ```text
 docker build --pull=false --build-arg TECTONIC_RESOURCES_IMAGE=<existing-resource-digest> \

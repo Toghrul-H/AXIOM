@@ -19,6 +19,14 @@ def test_dockerfile_sets_tectonic_cache_home():
     dockerfile = Path(__file__).resolve().parents[1] / 'Dockerfile'
     assert 'XDG_CACHE_HOME=/opt/tectonic-cache' in dockerfile.read_text(encoding='utf-8')
 
+
+def test_cache_warmup_and_verifier_cover_answer_key_roman_script_font():
+    root = Path(__file__).resolve().parents[1]
+    warmup = (root / 'docker' / 'tectonic-cache-warmup.tex').read_text(encoding='utf-8')
+    verifier = (root / 'scripts' / 'verify_tectonic_resource_image.py').read_text(encoding='utf-8')
+    assert r'\scriptscriptstyle \mathrm{0123456789}' in warmup
+    assert r'\scriptscriptstyle \mathrm{0123456789}' in verifier
+
 @pytest.mark.parametrize('mode,status',[('success',200),('failure',422),('timeout',504),('missing',422),('large',413),('glyph',422),('invalid',502),('unavailable',503)])
 def test_compiler_bounds_cleanup(configured,monkeypatch,mode,status):
     paths=[]
@@ -68,6 +76,22 @@ def test_compiler_logs_sanitized_diagnostic(configured, monkeypatch, caplog):
     assert 'confidential answer text' not in caplog.text
 
 
+def test_compiler_logs_safe_missing_resource(configured, monkeypatch, caplog):
+    def run(args, **kwargs):
+        root = Path(kwargs['cwd'])
+        (root / 'document.log').write_text(
+            'Could not locate a virtual/physical font for TFM "cmr6.pfb"\n'
+            'This diagnostic must not reveal the confidential answer.', encoding='utf-8'
+        )
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(compiler.subprocess, 'run', run)
+    with pytest.raises(HTTPException):
+        compiler.compile_pdf('trusted source')
+    assert 'diagnostic=font_resource_missing resource=cmr6.pfb' in caplog.text
+    assert 'confidential answer' not in caplog.text
+
+
 def test_compiler_classifies_math_error_without_logging_document_content(configured, monkeypatch, caplog):
     def run(args, **kwargs):
         root = Path(kwargs['cwd'])
@@ -80,7 +104,7 @@ def test_compiler_classifies_math_error_without_logging_document_content(configu
     with pytest.raises(HTTPException) as error:
         compiler.compile_pdf('trusted source')
     assert error.value.status_code == 422
-    assert 'diagnostic=missing_math_delimiter line=42' in caplog.text
+    assert 'diagnostic=missing_math_delimiter resource=none line=42' in caplog.text
     assert 'confidential answer text' not in caplog.text
 
 def test_docker_timeout_removes_container(configured,monkeypatch):

@@ -18,8 +18,12 @@ REGISTRY_DIGEST = re.compile(r"^[\w./:-]+@sha256:[0-9a-f]{64}$")
 LOCAL_IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 SMOKE = r"""\documentclass[a4paper]{article}
 \usepackage[margin=28mm]{geometry}
+\usepackage{amsmath,amsfonts}
 \providecommand{\lvert}{|}
 \providecommand{\rvert}{|}
+\providecommand{\binom}[2]{{#1 \choose #2}}
+\providecommand{\operatorname}[1]{\mathrm{#1}}
+\providecommand{\mathbb}[1]{\mathrm{#1}}
 \begin{document}
 AXIOM Tectonic offline mathematical verification:
 \[
@@ -31,7 +35,8 @@ AXIOM Tectonic offline mathematical verification:
 $A \cap B = B \cap A$ and $\lvert A \cap B\rvert \le \lvert A\rvert$.
 
 {\fontsize{11}{13}\selectfont
-$\displaystyle \sum_{i=1}^{n}\frac{x_i^2}{z_i^2}$.
+$\displaystyle \sum_{i=1}^{n}\frac{x_i^2}{z_i^2}$,
+$\binom nk$, and $\scriptscriptstyle \mathrm{0123456789}$.
 }
 \end{document}
 """
