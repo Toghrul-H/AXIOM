@@ -1,4 +1,9 @@
 import { apiFetch } from "./auth";
+import {
+  downloadPdfDocument,
+  fetchPdfDocument,
+  type PdfDocument,
+} from "./pdf-document";
 
 export type PracticeSheetEntry = {
   question_id: number;
@@ -119,37 +124,23 @@ export const practiceSheetsApi = {
     request<PracticeSheet>(`/${id}/finalize`, { method: "POST" }),
 };
 
+export function getPracticeSheetPdf(
+  sheetId: number,
+  variantId: number,
+  kind: "sheet" | "answer-key",
+  signal?: AbortSignal,
+): Promise<PdfDocument> {
+  return fetchPdfDocument(
+    `/practice-sheets/${sheetId}/variants/${variantId}/documents/${kind}/pdf`,
+    `axiom-practice-sheet-${sheetId}-${variantId}-${kind}.pdf`,
+    signal,
+  );
+}
+
 export async function downloadPracticeSheetPdf(
   sheetId: number,
   variantId: number,
   kind: "sheet" | "answer-key",
 ) {
-  const response = await apiFetch(
-    `/practice-sheets/${sheetId}/variants/${variantId}/documents/${kind}/pdf`,
-  );
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(
-      typeof body?.detail === "string"
-        ? body.detail
-        : "PDF generation failed. Please retry.",
-    );
-  }
-  if (!response.headers.get("content-type")?.startsWith("application/pdf"))
-    throw new Error("The server did not return a PDF. Please retry.");
-  const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement("a");
-  link.href = url;
-  link.download =
-    response.headers
-      .get("content-disposition")
-      ?.match(/filename="?([^";]+)"?/i)?.[1] ??
-    `axiom-practice-sheet-${sheetId}-${variantId}-${kind}.pdf`;
-  try {
-    document.body.appendChild(link);
-    link.click();
-  } finally {
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  downloadPdfDocument(await getPracticeSheetPdf(sheetId, variantId, kind));
 }

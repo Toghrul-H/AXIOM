@@ -12,6 +12,7 @@ import {
 import {
   downloadPracticeSheetPdf,
   defaultPracticeSheetDocumentSettings,
+  getPracticeSheetPdf,
   practiceSheetsApi,
   type PracticeSheet,
   type PracticeSheetDocumentSettings,
@@ -27,6 +28,7 @@ import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import { QuestionFilters } from "./question-filters";
 import { MathText } from "./math-text";
+import { PdfPreviewDialog } from "./pdf-preview-dialog";
 
 const PAGE_SIZE = 20;
 const emptyDraft = () => ({
@@ -83,6 +85,10 @@ export function PracticeSheetBuilder() {
   const [questionsPerVariant, setQuestionsPerVariant] = useState("");
   const [variantSeed, setVariantSeed] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<{
+    variantId: number;
+    kind: "sheet" | "answer-key";
+  } | null>(null);
   const [draggedQuestionId, setDraggedQuestionId] = useState<number | null>(
     null,
   );
@@ -180,6 +186,7 @@ export function PracticeSheetBuilder() {
     setDraft(next);
     setSavedSignature(signature(next));
     setConfirmingFinalization(false);
+    setPreviewDocument(null);
     setNotice("");
     setError("");
   }
@@ -418,6 +425,16 @@ export function PracticeSheetBuilder() {
       setDownloading(null);
     }
   }
+  function preview(variantId: number, kind: "sheet" | "answer-key") {
+    if (draft.id === null || dirty) {
+      setError(
+        "You have unsaved changes. Please save before previewing a PDF.",
+      );
+      return;
+    }
+    setError("");
+    setPreviewDocument({ variantId, kind });
+  }
 
   return (
     <>
@@ -547,6 +564,14 @@ export function PracticeSheetBuilder() {
                         <button
                           type="button"
                           className="button button-secondary"
+                          onClick={() => preview(draft.variants[0].id, "sheet")}
+                          disabled={downloading !== null || dirty}
+                        >
+                          Preview Student PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary"
                           onClick={() =>
                             void download(draft.variants[0].id, "sheet")
                           }
@@ -555,6 +580,16 @@ export function PracticeSheetBuilder() {
                           {downloading === `${draft.variants[0].id}:sheet`
                             ? "Generating…"
                             : "Download Student PDF"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          onClick={() =>
+                            preview(draft.variants[0].id, "answer-key")
+                          }
+                          disabled={downloading !== null || dirty}
+                        >
+                          Preview Answer Key PDF
                         </button>
                         <button
                           type="button"
@@ -1083,12 +1118,28 @@ export function PracticeSheetBuilder() {
                           <button
                             type="button"
                             className="button button-secondary"
+                            onClick={() => preview(variant.id, "sheet")}
+                            disabled={downloading !== null || dirty}
+                          >
+                            Preview Student PDF
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
                             onClick={() => void download(variant.id, "sheet")}
                             disabled={downloading !== null || dirty}
                           >
                             {downloading === `${variant.id}:sheet`
                               ? "Generating…"
                               : "Download Student PDF"}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            onClick={() => preview(variant.id, "answer-key")}
+                            disabled={downloading !== null || dirty}
+                          >
+                            Preview Answer Key PDF
                           </button>
                           <button
                             type="button"
@@ -1358,6 +1409,26 @@ export function PracticeSheetBuilder() {
             </button>
           </div>
         </section>
+      )}
+      {draft.id !== null && previewDocument && (
+        <PdfPreviewDialog
+          open
+          title={
+            previewDocument.kind === "sheet"
+              ? "Practice Sheet PDF preview"
+              : "Practice Sheet Answer Key PDF preview"
+          }
+          documentKey={`practice-sheet:${draft.id}:${previewDocument.variantId}:${previewDocument.kind}`}
+          loadPdf={(signal) =>
+            getPracticeSheetPdf(
+              draft.id!,
+              previewDocument.variantId,
+              previewDocument.kind,
+              signal,
+            )
+          }
+          onClose={() => setPreviewDocument(null)}
+        />
       )}
     </>
   );

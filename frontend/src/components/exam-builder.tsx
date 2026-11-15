@@ -7,6 +7,7 @@ import {
   downloadExamPdf,
   defaultExamDocumentSettings,
   examsApi,
+  getExamPdf,
   type ExamDocumentSettings,
   type Exam,
   type ExamEntry,
@@ -21,6 +22,7 @@ import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import { QuestionFilters } from "./question-filters";
 import { MathText } from "./math-text";
+import { PdfPreviewDialog } from "./pdf-preview-dialog";
 
 const PAGE_SIZE = 20;
 const emptyDraft = () => ({
@@ -62,6 +64,9 @@ export function ExamBuilder() {
   const [notice, setNotice] = useState("");
   const [confirmingFinalization, setConfirmingFinalization] = useState(false);
   const [downloading, setDownloading] = useState<"exam" | "answer-key" | null>(
+    null,
+  );
+  const [previewKind, setPreviewKind] = useState<"exam" | "answer-key" | null>(
     null,
   );
   const { metadata, error: metadataError } = useMetadata();
@@ -170,6 +175,7 @@ export function ExamBuilder() {
     setDraft(next);
     setSavedSignature(signature(next));
     setConfirmingFinalization(false);
+    setPreviewKind(null);
     setNotice("");
     setError("");
   }
@@ -321,6 +327,20 @@ export function ExamBuilder() {
       setDownloading(null);
     }
   }
+  function preview(kind: "exam" | "answer-key") {
+    if (draft.id === null || dirty) {
+      setError(
+        "You have unsaved changes. Please save before previewing a PDF.",
+      );
+      return;
+    }
+    setError("");
+    setPreviewKind(kind);
+  }
+  const previewDocument =
+    draft.id !== null && previewKind !== null
+      ? { id: draft.id, kind: previewKind }
+      : null;
 
   return (
     <>
@@ -449,12 +469,28 @@ export function ExamBuilder() {
                   <button
                     className="button button-secondary"
                     type="button"
+                    onClick={() => preview("exam")}
+                    disabled={downloading !== null || dirty}
+                  >
+                    Preview Exam PDF
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    type="button"
                     onClick={() => void download("exam")}
                     disabled={downloading !== null || dirty}
                   >
                     {downloading === "exam"
                       ? "Generating exam…"
                       : "Download Exam PDF"}
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    onClick={() => preview("answer-key")}
+                    disabled={downloading !== null || dirty}
+                  >
+                    Preview Answer Key PDF
                   </button>
                   <button
                     className="button button-secondary"
@@ -1022,6 +1058,21 @@ export function ExamBuilder() {
             </button>
           </div>
         </section>
+      )}
+      {previewDocument && (
+        <PdfPreviewDialog
+          open
+          title={
+            previewDocument.kind === "exam"
+              ? "Exam PDF preview"
+              : "Exam Answer Key PDF preview"
+          }
+          documentKey={`exam:${previewDocument.id}:${previewDocument.kind}`}
+          loadPdf={(signal) =>
+            getExamPdf(previewDocument.id, previewDocument.kind, signal)
+          }
+          onClose={() => setPreviewKind(null)}
+        />
       )}
     </>
   );

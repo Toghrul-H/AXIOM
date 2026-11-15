@@ -1,4 +1,9 @@
 import { apiFetch } from "./auth";
+import {
+  downloadPdfDocument,
+  fetchPdfDocument,
+  type PdfDocument,
+} from "./pdf-document";
 
 export type ExamEntry = {
   question_id: number;
@@ -101,30 +106,18 @@ export const examsApi = {
     request<Exam>(`/${id}/finalize`, { method: "POST" }),
 };
 
+export function getExamPdf(
+  id: number,
+  kind: "exam" | "answer-key",
+  signal?: AbortSignal,
+): Promise<PdfDocument> {
+  return fetchPdfDocument(
+    `/exams/${id}/documents/${kind}/pdf`,
+    `axiom-exam-${id}-${kind}.pdf`,
+    signal,
+  );
+}
+
 export async function downloadExamPdf(id: number, kind: "exam" | "answer-key") {
-  const response = await apiFetch(`/exams/${id}/documents/${kind}/pdf`);
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(
-      typeof body?.detail === "string"
-        ? body.detail
-        : "PDF generation failed. Please retry.",
-    );
-  }
-  if (!response.headers.get("content-type")?.startsWith("application/pdf"))
-    throw new Error("The server did not return a PDF. Please retry.");
-  const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement("a");
-  link.href = url;
-  link.download =
-    response.headers
-      .get("content-disposition")
-      ?.match(/filename="?([^";]+)"?/i)?.[1] ?? `axiom-exam-${id}-${kind}.pdf`;
-  try {
-    document.body.appendChild(link);
-    link.click();
-  } finally {
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  downloadPdfDocument(await getExamPdf(id, kind));
 }
