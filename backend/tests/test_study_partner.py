@@ -8,7 +8,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from fastapi import HTTPException, Response
 from pydantic import ValidationError
-from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine, text
+from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from app.auth_models import User
 from app.database import Base
 from app.main import app
 from app.models import Topic
+from app.notification_models import Notification
 from app.routers.study_partner import (
     accept_request,
     cancel_request,
@@ -353,6 +354,7 @@ def test_request_integrity_error_is_reported_as_a_controlled_conflict(monkeypatc
         with pytest.raises(HTTPException) as conflict:
             create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
         assert conflict.value.status_code == 409
+        assert session.scalar(select(Notification.id)) is None
         assert conflict.value.detail == "A study request is already pending"
     finally:
         session.close()
@@ -409,6 +411,39 @@ def test_accepted_participants_can_exchange_paginated_private_messages():
         with pytest.raises(HTTPException) as outsider:
             chat_messages(request["id"], session, third, 0, 50)
         assert outsider.value.status_code == 404 and outsider.value.detail == "Conversation not available"
+    finally:
+        session.close()
+
+
+def test_study_partner_events_target_only_counterparts_and_hide_message_text():
+    session, student, partner, third, fourth, _, topic, _ = setup()
+    try:
+        for user, name in ((student, "Ada"), (partner, "Bela"), (third, "Csilla"), (fourth, "Dora")):
+            put_my_profile(profile_payload(name, topic.id), session, user)
+
+        request = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        received = list(session.scalars(select(Notification).where(Notification.recipient_user_id == partner.id)))
+        assert [(item.kind, item.dedupe_key) for item in received] == [
+            ("STUDY_PARTNER_REQUEST_RECEIVED", f"study-request:{request['id']}:received")
+        ]
+        assert session.scalar(select(Notification.id).where(Notification.recipient_user_id == student.id)) is None
+
+        accept_request(request["id"], session, partner)
+        accepted = session.scalar(select(Notification).where(Notification.recipient_user_id == student.id, Notification.kind == "STUDY_PARTNER_REQUEST_ACCEPTED"))
+        assert accepted is not None and accepted.payload == {"title": "Study Partner request accepted", "resource_id": request["id"]}
+
+        message = send_chat_message(request["id"], StudyPartnerMessageCreate(content="Private message text"), session, student)
+        chat = session.scalar(select(Notification).where(Notification.recipient_user_id == partner.id, Notification.kind == "STUDY_PARTNER_CHAT_MESSAGE"))
+        assert chat is not None and chat.dedupe_key == f"study-chat-message:{message['id']}"
+        assert "Private message text" not in str(chat.payload)
+
+        declined = create_request(StudyPartnerRequestCreate(recipient_profile_id=third.id), session, student)
+        decline_request(declined["id"], session, third)
+        assert session.scalar(select(Notification).where(Notification.recipient_user_id == student.id, Notification.kind == "STUDY_PARTNER_REQUEST_DECLINED")) is not None
+
+        cancelled = create_request(StudyPartnerRequestCreate(recipient_profile_id=fourth.id), session, student)
+        cancel_request(cancelled["id"], session, student)
+        assert session.scalar(select(Notification).where(Notification.recipient_user_id == fourth.id, Notification.kind == "STUDY_PARTNER_REQUEST_CANCELLED")) is not None
     finally:
         session.close()
 

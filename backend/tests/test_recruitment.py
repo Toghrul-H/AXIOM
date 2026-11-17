@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_models import User
 from app.database import Base
+from app.notification_models import Notification
 from app.recruitment_models import DemonstratorApplication, DemonstratorApplicationAnswer, DemonstratorQuestion, DemonstratorVacancy, RecruitmentNotification
 from app.recruitment_schemas import ApplicationStatusUpdate, ApplicationWrite, QuestionnaireUpdate
 from app.routers.recruitment import application_open, application_read, apply, export_applications, publish_notifications, safe_cell, status_summaries, update_application_status, update_questionnaire, validate_custom_answers, withdraw
@@ -57,6 +58,7 @@ def test_status_lifecycle_notifications_and_summary():
     updated = update_application_status(vacancy.id, application.id, ApplicationStatusUpdate(status="ACCEPTED"), session, lecturer)
     assert updated["status"] == "ACCEPTED" and application.decision_by_id == lecturer.id and application.decision_at
     assert [notification.kind for notification in session.scalars(select(RecruitmentNotification).where(RecruitmentNotification.user_id == application.user_id)).all()] == ["APPLICATION_UNDER_REVIEW", "APPLICATION_ACCEPTED"]
+    assert [notification.kind for notification in session.scalars(select(Notification).where(Notification.recipient_user_id == application.user_id).order_by(Notification.id))] == ["RECRUITMENT_APPLICATION_UNDER_REVIEW", "RECRUITMENT_APPLICATION_ACCEPTED"]
     summary = status_summaries(session, [vacancy.id])[vacancy.id]
     assert summary["ACCEPTED"] == 1 and summary["SUBMITTED"] == 1 and summary["WITHDRAWN"] == 0
     with pytest.raises(HTTPException) as error:
@@ -132,6 +134,8 @@ def test_notification_deduplication_formula_safety_and_open_window():
     session, lecturer, student, _, vacancy, _, _ = setup()
     publish_notifications(session, vacancy); publish_notifications(session, vacancy); session.commit()
     assert len(session.scalars(select(RecruitmentNotification).where(RecruitmentNotification.user_id == student.id, RecruitmentNotification.kind == "VACANCY_OPEN")).all()) == 1
+    unified = list(session.scalars(select(Notification).where(Notification.recipient_user_id == student.id, Notification.kind == "RECRUITMENT_VACANCY_OPEN")))
+    assert len(unified) == 1 and unified[0].dedupe_key == f"recruitment-vacancy:{vacancy.id}:open"
     assert safe_cell("=SUM(A1:A2)") == "'=SUM(A1:A2)"
     point = datetime.now(timezone.utc)
     vacancy.opens_at = point - timedelta(minutes=1); vacancy.closes_at = point + timedelta(minutes=1)

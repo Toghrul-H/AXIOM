@@ -15,6 +15,7 @@ from app.database import get_session
 from app.models import Topic
 from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerMessage, StudyPartnerProfile, StudyPartnerRequest, StudyPartnerTopic
 from app.study_partner_schemas import AvailabilitySlot, StudyPartnerBlockCreate, StudyPartnerBlockRead, StudyPartnerChatRead, StudyPartnerMessageCreate, StudyPartnerMessageRead, StudyPartnerProfileRead, StudyPartnerProfileWrite, StudyPartnerPublicRead, StudyPartnerRequestCreate, StudyPartnerRequestRead, StudyPartnerTopicRead
+from app.services.notifications import create_notification
 
 
 router = APIRouter(tags=["Study Partner"])
@@ -27,6 +28,36 @@ REQUEST_COOLDOWN = timedelta(hours=24)
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def notify_student(
+    session: Session,
+    *,
+    recipient_user_id: int,
+    actor_user_id: int,
+    kind: str,
+    dedupe_key: str,
+    title: str,
+    resource_id: int,
+) -> None:
+    recipient = session.get(User, recipient_user_id)
+    if (
+        recipient is None
+        or recipient.role != "STUDENT"
+        or not recipient.is_active
+        or not recipient.email_verified
+        or recipient.is_legacy
+    ):
+        return
+    create_notification(
+        session,
+        recipient_user_id=recipient_user_id,
+        actor_user_id=actor_user_id,
+        kind=kind,
+        dedupe_key=dedupe_key,
+        payload={"title": title, "resource_id": resource_id},
+        link="/student/study-partner",
+    )
 
 
 def topic_rows(session: Session, profile_user_id: int) -> list[tuple[StudyPartnerTopic, Topic]]:
@@ -387,6 +418,16 @@ def create_request(payload: StudyPartnerRequestCreate, session: DB, actor: Stude
     )
     session.add(request)
     try:
+        session.flush()
+        notify_student(
+            session,
+            recipient_user_id=request.recipient_user_id,
+            actor_user_id=actor.id,
+            kind="STUDY_PARTNER_REQUEST_RECEIVED",
+            dedupe_key=f"study-request:{request.id}:received",
+            title="New Study Partner request",
+            resource_id=request.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -495,6 +536,16 @@ def send_chat_message(request_id: Id, payload: StudyPartnerMessageCreate, sessio
     accessible_chat_or_404(session, request_id, actor.id)
     message = StudyPartnerMessage(request_id=request_id, sender_user_id=actor.id, content=payload.content)
     session.add(message)
+    session.flush()
+    notify_student(
+        session,
+        recipient_user_id=counterpart_id,
+        actor_user_id=actor.id,
+        kind="STUDY_PARTNER_CHAT_MESSAGE",
+        dedupe_key=f"study-chat-message:{message.id}",
+        title="New Study Partner message",
+        resource_id=request_id,
+    )
     session.commit()
     session.refresh(message)
     return message_read(message)
@@ -516,6 +567,26 @@ def transition_request(session: Session, request_id: int, actor_id: int, action:
     if result.rowcount != 1:
         session.rollback()
         raise HTTPException(409, "This study request is no longer pending")
+    recipient_user_id = (
+        request.requester_user_id
+        if action in {"accept", "decline"}
+        else request.recipient_user_id
+    )
+    next_kind = f"STUDY_PARTNER_REQUEST_{next_status}"
+    next_title = {
+        "ACCEPTED": "Study Partner request accepted",
+        "DECLINED": "Study Partner request declined",
+        "CANCELLED": "Study Partner request cancelled",
+    }[next_status]
+    notify_student(
+        session,
+        recipient_user_id=recipient_user_id,
+        actor_user_id=actor_id,
+        kind=next_kind,
+        dedupe_key=f"study-request:{request.id}:{next_status.lower()}",
+        title=next_title,
+        resource_id=request.id,
+    )
     session.commit()
     session.refresh(request)
     return request

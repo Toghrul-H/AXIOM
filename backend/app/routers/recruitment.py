@@ -14,6 +14,7 @@ from app.auth_models import User
 from app.database import get_session
 from app.recruitment_models import DemonstratorApplication, DemonstratorApplicationAnswer, DemonstratorQuestion, DemonstratorVacancy, RecruitmentNotification
 from app.recruitment_schemas import ApplicationRead, ApplicationStatusUpdate, ApplicationWrite, NotificationRead, QuestionnaireQuestionRead, QuestionnaireUpdate, StaffVacancyRead, VacancyRead, VacancyWrite
+from app.services.notifications import create_notification, create_notifications
 
 router = APIRouter(tags=["Demonstrator recruitment"])
 DB = Annotated[Session, Depends(get_session)]
@@ -77,14 +78,44 @@ def publish_notifications(session: Session, vacancy: DemonstratorVacancy) -> Non
         exists = session.scalar(select(RecruitmentNotification.id).where(RecruitmentNotification.user_id == user_id, RecruitmentNotification.vacancy_id == vacancy.id, RecruitmentNotification.kind == "VACANCY_OPEN"))
         if not exists:
             session.add(RecruitmentNotification(user_id=user_id, vacancy_id=vacancy.id, title="New Demonstrator Opportunity", body=f"{vacancy.course_name} is looking for {vacancy.available_positions} demonstrator(s). Applications are now open.", link="/student/demonstrator-opportunities"))
+    create_notifications(
+        session,
+        recipient_user_ids=users,
+        actor_user_id=vacancy.created_by_id,
+        kind="RECRUITMENT_VACANCY_OPEN",
+        dedupe_key=f"recruitment-vacancy:{vacancy.id}:open",
+        payload={"title": "New demonstrator opportunity", "resource_id": vacancy.id},
+        link="/student/demonstrator-opportunities",
+    )
 
 
-def notify_application_status(session: Session, application: DemonstratorApplication, vacancy: DemonstratorVacancy) -> None:
+def notify_application_status(
+    session: Session,
+    application: DemonstratorApplication,
+    vacancy: DemonstratorVacancy,
+    actor_user_id: int | None = None,
+) -> None:
     kind = f"APPLICATION_{application.status}"
-    if session.scalar(select(RecruitmentNotification.id).where(RecruitmentNotification.user_id == application.user_id, RecruitmentNotification.vacancy_id == vacancy.id, RecruitmentNotification.kind == kind)):
-        return
-    wording = {"UNDER_REVIEW": "is now under review.", "ACCEPTED": "has been accepted.", "REJECTED": "has been declined."}[application.status]
-    session.add(RecruitmentNotification(user_id=application.user_id, vacancy_id=vacancy.id, kind=kind, title="Demonstrator Application Update", body=f"Your application for {vacancy.course_name} {wording}", link="/student/demonstrator-opportunities"))
+    if not session.scalar(select(RecruitmentNotification.id).where(RecruitmentNotification.user_id == application.user_id, RecruitmentNotification.vacancy_id == vacancy.id, RecruitmentNotification.kind == kind)):
+        wording = {"UNDER_REVIEW": "is now under review.", "ACCEPTED": "has been accepted.", "REJECTED": "has been declined."}[application.status]
+        session.add(RecruitmentNotification(user_id=application.user_id, vacancy_id=vacancy.id, kind=kind, title="Demonstrator Application Update", body=f"Your application for {vacancy.course_name} {wording}", link="/student/demonstrator-opportunities"))
+    applicant = session.get(User, application.user_id)
+    if (
+        applicant is not None
+        and applicant.role == "STUDENT"
+        and applicant.is_active
+        and applicant.email_verified
+        and not applicant.is_legacy
+    ):
+        create_notification(
+            session,
+            recipient_user_id=application.user_id,
+            actor_user_id=actor_user_id,
+            kind=f"RECRUITMENT_APPLICATION_{application.status}",
+            dedupe_key=f"recruitment-application:{application.id}:{application.status.lower()}",
+            payload={"title": "Demonstrator application update", "resource_id": application.id},
+            link="/student/demonstrator-opportunities",
+        )
 
 
 def validate_custom_answers(questions: list[DemonstratorQuestion], answers: dict[int, object]) -> None:
@@ -226,7 +257,7 @@ def update_application_status(vacancy_id: Id, application_id: Id, payload: Appli
         if accepted >= vacancy.available_positions: raise HTTPException(409, "All demonstrator positions have already been accepted")
     application.status = payload.status
     if payload.status in {"ACCEPTED", "REJECTED"}: application.decision_at = now(); application.decision_by_id = actor.id
-    notify_application_status(session, application, vacancy); session.commit(); session.refresh(application)
+    notify_application_status(session, application, vacancy, actor.id); session.commit(); session.refresh(application)
     return application_read(session, application)
 
 

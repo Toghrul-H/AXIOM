@@ -198,21 +198,61 @@ def create_notifications(
             )
         )
     }
-    result: list[tuple[Notification, bool]] = [(existing[item], False) for item in recipients if item in existing]
-    for recipient in recipients:
-        if recipient not in existing:
-            result.append(
-                create_notification(
-                    session,
-                    recipient_user_id=recipient,
-                    actor_user_id=actor_user_id,
-                    kind=kind,
-                    dedupe_key=dedupe_key,
-                    payload=clean_payload,
-                    link=clean_link,
+    missing = [recipient for recipient in recipients if recipient not in existing]
+    inserted_recipients: set[int] = set()
+    dialect = session.get_bind().dialect.name
+    if missing and dialect in {"postgresql", "sqlite"}:
+        insert = postgresql_insert if dialect == "postgresql" else sqlite_insert
+        rows = session.execute(
+            insert(Notification)
+            .values(
+                [
+                    {
+                        "recipient_user_id": recipient,
+                        "actor_user_id": actor_user_id,
+                        "kind": kind,
+                        "dedupe_key": dedupe_key,
+                        "payload": clean_payload,
+                        "link": clean_link,
+                    }
+                    for recipient in missing
+                ]
+            )
+            .on_conflict_do_nothing(
+                index_elements=("recipient_user_id", "dedupe_key")
+            )
+            .returning(Notification.recipient_user_id)
+        ).all()
+        inserted_recipients = {row[0] for row in rows}
+        existing = {
+            item.recipient_user_id: item
+            for item in session.scalars(
+                select(Notification).where(
+                    Notification.recipient_user_id.in_(recipients),
+                    Notification.dedupe_key == dedupe_key,
                 )
             )
-    return sorted(result, key=lambda item: item[0].recipient_user_id)
+        }
+    else:
+        for recipient in missing:
+            notification, created = create_notification(
+                session,
+                recipient_user_id=recipient,
+                actor_user_id=actor_user_id,
+                kind=kind,
+                dedupe_key=dedupe_key,
+                payload=clean_payload,
+                link=clean_link,
+            )
+            existing[recipient] = notification
+            if created:
+                inserted_recipients.add(recipient)
+    if len(existing) != len(recipients):
+        raise RuntimeError("Notification fan-out did not return every recipient")
+    return [
+        (existing[recipient], recipient in inserted_recipients)
+        for recipient in recipients
+    ]
 
 
 def encode_cursor(notification: Notification) -> str:
