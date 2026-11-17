@@ -46,7 +46,12 @@ test("truth-table parser applies NOT, AND, OR, implication, and biconditional pr
     false,
   );
   assert.deepEqual(plain(truth.variables(expression)), ["P", "Q", "R"]);
-  assert.equal(truth.truthAssignments(["P", "Q"]).length, 4);
+  assert.deepEqual(plain(truth.truthAssignments(["P", "Q"])), [
+    { P: true, Q: true },
+    { P: true, Q: false },
+    { P: false, Q: true },
+    { P: false, Q: false },
+  ]);
 });
 
 test("truth-table parser reports invalid input and protects against excessive rows", () => {
@@ -96,5 +101,7 @@ test("visualization UI exposes both accessible tools from Course", () => {
     assert.match(ui, new RegExp(text));
   assert.match(course, /\/student\/course\/visualizations/);
   assert.match(ui, /role="img"/);
+  assert.match(ui, /set-operation-card/);
+  assert.match(ui, /set-operation-symbol/);
   assert.doesNotMatch(ui, /eval\(|Function\(/);
 });

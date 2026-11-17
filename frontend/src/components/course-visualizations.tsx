@@ -223,15 +223,20 @@ export function SetOperationsVisualizer() {
       <fieldset className="set-operations">
         <legend>Operation</legend>
         {operations.map((item) => (
-          <label key={item.value}>
+          <label
+            key={item.value}
+            className={`set-operation-card ${operation === item.value ? "is-selected" : ""}`}
+          >
             <input
               type="radio"
               name="set-operation"
               checked={operation === item.value}
               onChange={() => setOperation(item.value)}
             />
-            {item.label}{" "}
-            <span aria-label={item.notation}>({item.notation})</span>
+            <span className="set-operation-label">{item.label}</span>
+            <span className="set-operation-symbol" aria-label={item.notation}>
+              {item.notation}
+            </span>
           </label>
         ))}
       </fieldset>

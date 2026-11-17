@@ -213,11 +213,12 @@ export function truthAssignments(
 ): Record<string, TruthValue>[] {
   if (names.length > limit)
     throw new Error(`Use at most ${limit} propositional variables.`);
-  return Array.from({ length: 2 ** names.length }, (_, row) =>
+  const count = 2 ** names.length;
+  return Array.from({ length: count }, (_, row) =>
     Object.fromEntries(
       names.map((name, index) => [
         name,
-        Boolean((row >> (names.length - index - 1)) & 1),
+        Boolean(((count - row - 1) >> (names.length - index - 1)) & 1),
       ]),
     ),
   );
