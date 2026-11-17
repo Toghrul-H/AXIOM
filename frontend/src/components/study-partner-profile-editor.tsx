@@ -7,6 +7,7 @@ import {
   StudyPartnerDiscovery,
   StudyPartnerRequests,
 } from "@/components/study-partner-community";
+import { StudyPartnerChat } from "@/components/study-partner-chat";
 import { questionsApi, type Topic } from "@/lib/questions";
 import {
   type AvailabilitySlot,
@@ -538,6 +539,7 @@ export function StudyPartnerProfileEditor() {
             refreshKey={activityVersion}
             onActivity={() => setActivityVersion((current) => current + 1)}
           />
+          <StudyPartnerChat refreshKey={activityVersion} />
         </>
       )}
     </>

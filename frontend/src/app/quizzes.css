@@ -682,6 +682,94 @@
   gap: 12px;
   justify-content: space-between;
 }
+.study-partner-chat-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+}
+.study-partner-conversations {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+.study-partner-conversation {
+  background: #f5f0e5;
+  border: 1px solid #d9c08b;
+  border-radius: 8px;
+  color: #203858;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+}
+.study-partner-conversation.is-selected,
+.study-partner-conversation:hover {
+  background: #fffaf0;
+  border-color: #c79a43;
+}
+.study-partner-conversation span {
+  color: #58657a;
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.study-partner-message-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.study-partner-message-panel h3 {
+  margin: 0;
+}
+.study-partner-message-list {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  min-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.study-partner-message {
+  background: #f5f0e5;
+  border-radius: 10px 10px 10px 2px;
+  justify-self: start;
+  max-width: min(85%, 620px);
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.study-partner-message.is-own {
+  background: #203858;
+  border-radius: 10px 10px 2px 10px;
+  color: #fffaf0;
+  justify-self: end;
+}
+.study-partner-message p {
+  margin: 5px 0;
+}
+.study-partner-message a {
+  color: inherit;
+  text-decoration: underline;
+}
+.study-partner-message time {
+  color: #58657a;
+  font-size: 0.75rem;
+}
+.study-partner-message.is-own time {
+  color: #e5d6b7;
+}
+.study-partner-composer {
+  display: grid;
+  gap: 8px;
+}
+.study-partner-composer textarea {
+  min-height: 84px;
+  resize: vertical;
+}
 .study-partner-slot label {
   margin: 0;
 }
@@ -705,8 +793,18 @@
   .study-partner-topic-grid,
   .study-partner-slot,
   .study-partner-filters,
-  .study-partner-request-grid {
+  .study-partner-request-grid,
+  .study-partner-chat-layout {
     grid-template-columns: 1fr;
+  }
+  .study-partner-conversations {
+    display: flex;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .study-partner-conversation {
+    flex: 0 0 min(260px, 82vw);
   }
   .study-partner-slot .button {
     width: 100%;

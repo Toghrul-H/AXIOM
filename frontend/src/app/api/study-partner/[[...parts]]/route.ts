@@ -14,9 +14,9 @@ async function forward(
   const { parts = [] } = await context.params;
   const suffix = parts.join("/");
   const patterns: Record<string, RegExp> = {
-    GET: /^(?:me|partners|requests)$/,
+    GET: /^(?:me|partners|requests|chats(?:\/[1-9][0-9]*\/messages)?)$/,
     PUT: /^me$/,
-    POST: /^(?:requests(?:\/[1-9][0-9]*\/(?:accept|decline|cancel))?|blocks)$/,
+    POST: /^(?:requests(?:\/[1-9][0-9]*\/(?:accept|decline|cancel))?|blocks|chats\/[1-9][0-9]*\/messages)$/,
     DELETE: /^blocks\/[1-9][0-9]*$/,
   };
   if (!patterns[request.method]?.test(suffix))

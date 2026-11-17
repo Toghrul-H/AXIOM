@@ -125,3 +125,31 @@ class StudyPartnerBlockCreate(BaseModel):
 class StudyPartnerBlockRead(BaseModel):
     blocked_user_id: int
     created_at: datetime
+
+
+class StudyPartnerMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def clean_content(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Message cannot be empty")
+        if any(ord(character) < 32 and character not in "\n\r\t" for character in value):
+            raise ValueError("Control characters are not permitted")
+        return value
+
+
+class StudyPartnerMessageRead(BaseModel):
+    id: int
+    sender_user_id: int
+    content: str
+    created_at: datetime
+
+
+class StudyPartnerChatRead(BaseModel):
+    request_id: int
+    counterpart: StudyPartnerRequestCounterpart
+    last_message_preview: str | None = None
+    last_message_at: datetime | None = None

@@ -11,6 +11,7 @@ const proxySource = source(
 const profileClient = source("../src/lib/study-partner.ts");
 const editor = source("../src/components/study-partner-profile-editor.tsx");
 const community = source("../src/components/study-partner-community.tsx");
+const chat = source("../src/components/study-partner-chat.tsx");
 const shell = source("../src/components/app-shell.tsx");
 
 function route(fetch, base = "https://api.example.test") {
@@ -55,6 +56,8 @@ test("Study Partner client uses authenticated same-origin requests only", () => 
   assert.match(profileClient, /\/study-partner\/partners/);
   assert.match(profileClient, /"\/study-partner\/requests/);
   assert.match(profileClient, /"\/study-partner\/blocks/);
+  assert.match(profileClient, /"\/study-partner\/chats"/);
+  assert.match(profileClient, /\/messages/);
   assert.doesNotMatch(profileClient, /email|neptun|Authorization/iu);
 });
 
@@ -98,7 +101,7 @@ test("Study Partner proxy forwards unchanged PUT profile payload and rejects uns
   );
 });
 
-test("Study Partner proxy forwards discovery, request actions, and block changes", async () => {
+test("Study Partner proxy forwards discovery, request actions, blocks, and chat routes", async () => {
   const calls = [];
   const handler = route(async (url, init) => {
     calls.push([String(url), init.method, init.body]);
@@ -120,6 +123,14 @@ test("Study Partner proxy forwards discovery, request actions, and block changes
     request("/blocks/7", "DELETE"),
     context(["blocks", "7"]),
   );
+  await handler.GET(
+    request("/chats/7/messages?offset=0&limit=100"),
+    context(["chats", "7", "messages"]),
+  );
+  await handler.POST(
+    request("/chats/7/messages", "POST", '{"content":"Hello"}'),
+    context(["chats", "7", "messages"]),
+  );
   assert.deepEqual(calls, [
     [
       "https://api.example.test/study-partner/partners?topic_id=4&study_format=ONLINE",
@@ -133,6 +144,16 @@ test("Study Partner proxy forwards discovery, request actions, and block changes
     ],
     ["https://api.example.test/study-partner/requests/7/accept", "POST", ""],
     ["https://api.example.test/study-partner/blocks/7", "DELETE", undefined],
+    [
+      "https://api.example.test/study-partner/chats/7/messages?offset=0&limit=100",
+      "GET",
+      undefined,
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/messages",
+      "POST",
+      '{"content":"Hello"}',
+    ],
   ]);
 });
 
@@ -162,4 +183,18 @@ test("community UI only uses public partner fields and protects request actions"
   ])
     assert.match(community, new RegExp(expected));
   assert.doesNotMatch(community, /neptun|email|availability\.map/iu);
+});
+
+test("chat UI uses text-safe rendering, validation, polling, and retry states", () => {
+  for (const expected of [
+    "Accepted Study Partner connections appear here.",
+    "POL L_INTERVAL_MS".replace(" ", ""),
+    "Messages can contain at most",
+    "noopener noreferrer",
+    "This conversation is no longer available.",
+  ])
+    assert.match(chat, new RegExp(expected));
+  assert.ok(chat.includes("Shift+Enter adds a line"));
+  assert.ok(chat.includes("new URL(part)"));
+  assert.doesNotMatch(chat, /dangerouslySetInnerHTML|innerHTML/);
 });

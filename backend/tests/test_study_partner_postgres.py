@@ -50,7 +50,7 @@ def study_partner_schema():
             connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
             config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
             config.attributes["connection"] = connection
-            command.upgrade(config, "0022")
+            command.upgrade(config, "0023")
         except Exception:
             connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             raise
@@ -241,14 +241,15 @@ def test_postgres_transition_and_block_races_remain_controlled(study_partner_sch
         connection.close()
 
 
-def test_postgres_0022_downgrade_upgrade_round_trip(study_partner_schema):
+def test_postgres_0023_downgrade_upgrade_round_trip(study_partner_schema):
     engine = get_engine()
     with engine.begin() as connection:
         connection.execute(text(f'SET LOCAL search_path TO "{study_partner_schema}"'))
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         config.attributes["connection"] = connection
-        command.downgrade(config, "0021")
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0021"
-        command.upgrade(config, "0022")
+        command.downgrade(config, "0022")
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
-        assert connection.scalar(text("SELECT to_regclass('study_partner_requests')")) == "study_partner_requests"
+        assert connection.scalar(text("SELECT to_regclass('study_partner_messages')")) is None
+        command.upgrade(config, "0023")
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0023"
+        assert connection.scalar(text("SELECT to_regclass('study_partner_messages')")) == "study_partner_messages"

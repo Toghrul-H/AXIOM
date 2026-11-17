@@ -13,8 +13,8 @@ from app.auth import student_user, utc
 from app.auth_models import User
 from app.database import get_session
 from app.models import Topic
-from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerProfile, StudyPartnerRequest, StudyPartnerTopic
-from app.study_partner_schemas import AvailabilitySlot, StudyPartnerBlockCreate, StudyPartnerBlockRead, StudyPartnerProfileRead, StudyPartnerProfileWrite, StudyPartnerPublicRead, StudyPartnerRequestCreate, StudyPartnerRequestRead, StudyPartnerTopicRead
+from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerMessage, StudyPartnerProfile, StudyPartnerRequest, StudyPartnerTopic
+from app.study_partner_schemas import AvailabilitySlot, StudyPartnerBlockCreate, StudyPartnerBlockRead, StudyPartnerChatRead, StudyPartnerMessageCreate, StudyPartnerMessageRead, StudyPartnerProfileRead, StudyPartnerProfileWrite, StudyPartnerPublicRead, StudyPartnerRequestCreate, StudyPartnerRequestRead, StudyPartnerTopicRead
 
 
 router = APIRouter(tags=["Study Partner"])
@@ -219,6 +219,25 @@ def owned_request_or_404(session: Session, request_id: int, actor_id: int) -> St
     return request
 
 
+def accessible_chat_or_404(session: Session, request_id: int, actor_id: int) -> StudyPartnerRequest:
+    request = session.get(StudyPartnerRequest, request_id)
+    if request is None or actor_id not in {request.requester_user_id, request.recipient_user_id}:
+        raise HTTPException(404, "Conversation not available")
+    counterpart_id = request.recipient_user_id if request.requester_user_id == actor_id else request.requester_user_id
+    if request.status != "ACCEPTED" or is_blocked(session, actor_id, counterpart_id):
+        raise HTTPException(404, "Conversation not available")
+    return request
+
+
+def message_read(message: StudyPartnerMessage) -> dict:
+    return {
+        "id": message.id,
+        "sender_user_id": message.sender_user_id,
+        "content": message.content,
+        "created_at": message.created_at,
+    }
+
+
 @router.get("/study-partner/me", response_model=StudyPartnerProfileRead)
 def get_my_profile(session: DB, actor: Student):
     return profile_read(session, session.get(StudyPartnerProfile, actor.id))
@@ -390,6 +409,95 @@ def requests(
     if request_status:
         statement = statement.where(StudyPartnerRequest.status == request_status)
     return [request_read(session, item, actor.id) for item in session.scalars(statement)]
+
+
+@router.get("/study-partner/chats", response_model=list[StudyPartnerChatRead])
+def chats(session: DB, actor: Student):
+    accepted = list(
+        session.scalars(
+            select(StudyPartnerRequest)
+            .where(
+                StudyPartnerRequest.status == "ACCEPTED",
+                or_(StudyPartnerRequest.requester_user_id == actor.id, StudyPartnerRequest.recipient_user_id == actor.id),
+            )
+            .order_by(StudyPartnerRequest.id)
+        )
+    )
+    accessible = [
+        request
+        for request in accepted
+        if not is_blocked(
+            session,
+            actor.id,
+            request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id,
+        )
+    ]
+    if not accessible:
+        return []
+    request_ids = [request.id for request in accessible]
+    counterpart_ids = {
+        request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id
+        for request in accessible
+    }
+    profiles = {
+        profile.user_id: profile
+        for profile in session.scalars(select(StudyPartnerProfile).where(StudyPartnerProfile.user_id.in_(counterpart_ids)))
+    }
+    latest_by_request: dict[int, StudyPartnerMessage] = {}
+    for message in session.scalars(
+        select(StudyPartnerMessage)
+        .where(StudyPartnerMessage.request_id.in_(request_ids))
+        .order_by(StudyPartnerMessage.request_id, StudyPartnerMessage.created_at.desc(), StudyPartnerMessage.id.desc())
+    ):
+        latest_by_request.setdefault(message.request_id, message)
+    result = []
+    for request in accessible:
+        counterpart_id = request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id
+        profile = profiles.get(counterpart_id)
+        latest = latest_by_request.get(request.id)
+        result.append(
+            {
+                "request_id": request.id,
+                "counterpart": {"profile_id": counterpart_id, "display_name": profile.display_name if profile else "Study partner"},
+                "last_message_preview": latest.content.replace("\n", " ")[:160] if latest else None,
+                "last_message_at": latest.created_at if latest else None,
+            }
+        )
+    return sorted(result, key=lambda item: (utc(item["last_message_at"]) if item["last_message_at"] else datetime.min.replace(tzinfo=timezone.utc), item["request_id"]), reverse=True)
+
+
+@router.get("/study-partner/chats/{request_id}/messages", response_model=list[StudyPartnerMessageRead])
+def chat_messages(
+    request_id: Id,
+    session: DB,
+    actor: Student,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+):
+    accessible_chat_or_404(session, request_id, actor.id)
+    return [
+        message_read(message)
+        for message in session.scalars(
+            select(StudyPartnerMessage)
+            .where(StudyPartnerMessage.request_id == request_id)
+            .order_by(StudyPartnerMessage.created_at, StudyPartnerMessage.id)
+            .offset(offset)
+            .limit(limit)
+        )
+    ]
+
+
+@router.post("/study-partner/chats/{request_id}/messages", response_model=StudyPartnerMessageRead, status_code=status.HTTP_201_CREATED)
+def send_chat_message(request_id: Id, payload: StudyPartnerMessageCreate, session: DB, actor: Student):
+    request = accessible_chat_or_404(session, request_id, actor.id)
+    counterpart_id = request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id
+    lock_pair(session, actor.id, counterpart_id)
+    accessible_chat_or_404(session, request_id, actor.id)
+    message = StudyPartnerMessage(request_id=request_id, sender_user_id=actor.id, content=payload.content)
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    return message_read(message)
 
 
 def transition_request(session: Session, request_id: int, actor_id: int, action: Literal["accept", "decline", "cancel"]) -> StudyPartnerRequest:

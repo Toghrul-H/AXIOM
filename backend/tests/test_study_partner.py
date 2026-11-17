@@ -23,6 +23,8 @@ from app.models import Topic
 from app.routers.study_partner import (
     accept_request,
     cancel_request,
+    chat_messages,
+    chats,
     create_block,
     create_request,
     decline_request,
@@ -30,9 +32,10 @@ from app.routers.study_partner import (
     partners,
     put_my_profile,
     requests,
+    send_chat_message,
 )
 from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerRequest, StudyPartnerTopic
-from app.study_partner_schemas import StudyPartnerBlockCreate, StudyPartnerProfileWrite, StudyPartnerRequestCreate
+from app.study_partner_schemas import StudyPartnerBlockCreate, StudyPartnerMessageCreate, StudyPartnerProfileWrite, StudyPartnerRequestCreate
 
 
 def setup():
@@ -157,6 +160,8 @@ def test_study_partner_routes_are_registered():
         "/study-partner/requests/{request_id}/cancel",
         "/study-partner/blocks",
         "/study-partner/blocks/{user_id}",
+        "/study-partner/chats",
+        "/study-partner/chats/{request_id}/messages",
     } <= paths
 
 
@@ -368,5 +373,70 @@ def test_pending_pair_constraint_and_migration_chain():
         session.close()
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
-    revision = script.get_revision("0022")
-    assert revision is not None and revision.down_revision == "0021"
+    revision = script.get_revision("0023")
+    assert revision is not None and revision.down_revision == "0022"
+
+
+def test_accepted_participants_can_exchange_paginated_private_messages():
+    session, student, partner, third, _, _, topic, _ = setup()
+    try:
+        put_my_profile(profile_payload("Ada", topic.id), session, student)
+        put_my_profile(profile_payload("Bela", topic.id), session, partner)
+        put_my_profile(profile_payload("Csilla", topic.id), session, third)
+        request = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        accept_request(request["id"], session, partner)
+
+        first = send_chat_message(request["id"], StudyPartnerMessageCreate(content="  Hello, Bela!  "), session, student)
+        second = send_chat_message(request["id"], StudyPartnerMessageCreate(content="Hi Ada, let us study sets."), session, partner)
+        assert first["sender_user_id"] == student.id and first["content"] == "Hello, Bela!"
+        assert second["sender_user_id"] == partner.id
+        assert not hasattr(StudyPartnerMessageCreate.model_validate({"content": "x", "sender_user_id": third.id}), "sender_user_id")
+
+        history = chat_messages(request["id"], session, student, 0, 50)
+        assert [message["id"] for message in history] == [first["id"], second["id"]]
+        assert chat_messages(request["id"], session, partner, 1, 1)[0]["id"] == second["id"]
+        listing = chats(session, student)
+        assert listing == [
+            {
+                "request_id": request["id"],
+                "counterpart": {"profile_id": partner.id, "display_name": "Bela"},
+                "last_message_preview": "Hi Ada, let us study sets.",
+                "last_message_at": second["created_at"],
+            }
+        ]
+        assert "email" not in str(listing).lower() and "neptun" not in str(listing).lower()
+
+        with pytest.raises(HTTPException) as outsider:
+            chat_messages(request["id"], session, third, 0, 50)
+        assert outsider.value.status_code == 404 and outsider.value.detail == "Conversation not available"
+    finally:
+        session.close()
+
+
+def test_chat_rejects_inactive_requests_blocks_and_invalid_content():
+    session, student, partner, third, _, _, topic, _ = setup()
+    try:
+        for user, name in ((student, "Ada"), (partner, "Bela"), (third, "Csilla")):
+            put_my_profile(profile_payload(name, topic.id), session, user)
+        pending = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        with pytest.raises(HTTPException) as pending_error:
+            send_chat_message(pending["id"], StudyPartnerMessageCreate(content="Hello"), session, student)
+        assert pending_error.value.status_code == 404 and pending_error.value.detail == "Conversation not available"
+        decline_request(pending["id"], session, partner)
+        with pytest.raises(HTTPException) as declined_error:
+            chat_messages(pending["id"], session, student, 0, 50)
+        assert declined_error.value.status_code == 404 and declined_error.value.detail == "Conversation not available"
+
+        accepted = create_request(StudyPartnerRequestCreate(recipient_profile_id=third.id), session, student)
+        accept_request(accepted["id"], session, third)
+        create_block(StudyPartnerBlockCreate(blocked_user_id=third.id), session, student)
+        with pytest.raises(HTTPException) as blocked_error:
+            send_chat_message(accepted["id"], StudyPartnerMessageCreate(content="Blocked"), session, student)
+        assert blocked_error.value.status_code == 404 and blocked_error.value.detail == "Conversation not available"
+        assert session.scalar(text("SELECT count(*) FROM study_partner_messages")) == 0
+
+        for content in ("   ", "x" * 2001, "text\x01"):
+            with pytest.raises(ValidationError):
+                StudyPartnerMessageCreate(content=content)
+    finally:
+        session.close()

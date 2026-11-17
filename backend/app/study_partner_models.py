@@ -100,3 +100,17 @@ class StudyPartnerBlock(Base):
     blocker_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     blocked_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StudyPartnerMessage(Base):
+    __tablename__ = "study_partner_messages"
+    __table_args__ = (
+        CheckConstraint("length(content) >= 1 AND length(content) <= 2000", name="ck_study_partner_messages_content_length"),
+        Index("ix_study_partner_messages_request_created", "request_id", "created_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("study_partner_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

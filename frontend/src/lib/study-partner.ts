@@ -56,6 +56,20 @@ export type StudyPartnerRequest = {
   counterpart: { profile_id: number; display_name: string };
 };
 
+export type StudyPartnerChat = {
+  request_id: number;
+  counterpart: { profile_id: number; display_name: string };
+  last_message_preview: string | null;
+  last_message_at: string | null;
+};
+
+export type StudyPartnerMessage = {
+  id: number;
+  sender_user_id: number;
+  content: string;
+  created_at: string;
+};
+
 export type PartnerFilters = {
   topicIds?: number[];
   studyFormat?: StudyFormat;
@@ -107,4 +121,15 @@ export const studyPartnerApi = {
     authRequest("/study-partner/blocks", "POST", { blocked_user_id }),
   unblock: (userId: number) =>
     authRequest<void>(`/study-partner/blocks/${userId}`, "DELETE"),
+  chats: () => authRequest<StudyPartnerChat[]>("/study-partner/chats"),
+  messages: (requestId: number, offset = 0, limit = 100) =>
+    authRequest<StudyPartnerMessage[]>(
+      `/study-partner/chats/${requestId}/messages?offset=${offset}&limit=${limit}`,
+    ),
+  sendMessage: (requestId: number, content: string) =>
+    authRequest<StudyPartnerMessage>(
+      `/study-partner/chats/${requestId}/messages`,
+      "POST",
+      { content },
+    ),
 };
