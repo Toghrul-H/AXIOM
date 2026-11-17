@@ -10,6 +10,7 @@ const proxySource = source(
 );
 const profileClient = source("../src/lib/study-partner.ts");
 const editor = source("../src/components/study-partner-profile-editor.tsx");
+const community = source("../src/components/study-partner-community.tsx");
 const shell = source("../src/components/app-shell.tsx");
 
 function route(fetch, base = "https://api.example.test") {
@@ -48,9 +49,12 @@ function request(path = "", method = "GET", body) {
 
 const context = (parts = []) => ({ params: Promise.resolve({ parts }) });
 
-test("Study Partner profile client uses authenticated same-origin requests only", () => {
+test("Study Partner client uses authenticated same-origin requests only", () => {
   assert.match(profileClient, /authRequest/);
   assert.match(profileClient, /"\/study-partner\/me"/);
+  assert.match(profileClient, /\/study-partner\/partners/);
+  assert.match(profileClient, /"\/study-partner\/requests/);
+  assert.match(profileClient, /"\/study-partner\/blocks/);
   assert.doesNotMatch(profileClient, /email|neptun|Authorization/iu);
 });
 
@@ -75,7 +79,7 @@ test("Study Partner proxy forwards cookies, CSRF, query and safe JSON response",
   assert.deepEqual(await response.json(), { exists: false });
 });
 
-test("Study Partner proxy forwards unchanged PUT profile payload and rejects other paths", async () => {
+test("Study Partner proxy forwards unchanged PUT profile payload and rejects unsupported paths", async () => {
   const body = JSON.stringify({ display_name: "Ada", is_participating: true });
   const handler = route(async (url, init) => {
     assert.equal(String(url), "https://api.example.test/study-partner/me");
@@ -89,9 +93,47 @@ test("Study Partner proxy forwards unchanged PUT profile payload and rejects oth
     200,
   );
   assert.equal(
-    (await handler.GET(request("/partners"), context(["partners"]))).status,
+    (await handler.GET(request("/unknown"), context(["unknown"]))).status,
     404,
   );
+});
+
+test("Study Partner proxy forwards discovery, request actions, and block changes", async () => {
+  const calls = [];
+  const handler = route(async (url, init) => {
+    calls.push([String(url), init.method, init.body]);
+    return Response.json({ ok: true });
+  });
+  await handler.GET(
+    request("/partners?topic_id=4&study_format=ONLINE"),
+    context(["partners"]),
+  );
+  await handler.POST(
+    request("/requests", "POST", '{"recipient_profile_id":7}'),
+    context(["requests"]),
+  );
+  await handler.POST(
+    request("/requests/7/accept", "POST", ""),
+    context(["requests", "7", "accept"]),
+  );
+  await handler.DELETE(
+    request("/blocks/7", "DELETE"),
+    context(["blocks", "7"]),
+  );
+  assert.deepEqual(calls, [
+    [
+      "https://api.example.test/study-partner/partners?topic_id=4&study_format=ONLINE",
+      "GET",
+      undefined,
+    ],
+    [
+      "https://api.example.test/study-partner/requests",
+      "POST",
+      '{"recipient_profile_id":7}',
+    ],
+    ["https://api.example.test/study-partner/requests/7/accept", "POST", ""],
+    ["https://api.example.test/study-partner/blocks/7", "DELETE", undefined],
+  ]);
 });
 
 test("profile editor communicates visibility, privacy, availability and pause safeguards", () => {
@@ -106,4 +148,18 @@ test("profile editor communicates visibility, privacy, availability and pause sa
     assert.match(editor, new RegExp(expected));
   assert.match(shell, /href: "\/student\/study-partner"/);
   assert.match(shell, /user\?\.is_active/);
+});
+
+test("community UI only uses public partner fields and protects request actions", () => {
+  for (const expected of [
+    "Find study partners",
+    "Shared study topics",
+    "Exact schedules stay private",
+    "Send request",
+    "Incoming",
+    "Outgoing",
+    "Block",
+  ])
+    assert.match(community, new RegExp(expected));
+  assert.doesNotMatch(community, /neptun|email|availability\.map/iu);
 });

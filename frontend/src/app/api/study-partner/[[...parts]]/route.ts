@@ -13,7 +13,13 @@ async function forward(
 ) {
   const { parts = [] } = await context.params;
   const suffix = parts.join("/");
-  if ((request.method !== "GET" && request.method !== "PUT") || suffix !== "me")
+  const patterns: Record<string, RegExp> = {
+    GET: /^(?:me|partners|requests)$/,
+    PUT: /^me$/,
+    POST: /^(?:requests(?:\/[1-9][0-9]*\/(?:accept|decline|cancel))?|blocks)$/,
+    DELETE: /^blocks\/[1-9][0-9]*$/,
+  };
+  if (!patterns[request.method]?.test(suffix))
     return new Response(null, { status: 404 });
 
   const base = process.env.API_BASE_URL;
@@ -35,7 +41,9 @@ async function forward(
       {
         method: request.method,
         headers,
-        body: request.method === "PUT" ? await request.text() : undefined,
+        body: ["POST", "PUT"].includes(request.method)
+          ? await request.text()
+          : undefined,
         cache: "no-store",
         redirect: "manual",
         signal: request.signal,
@@ -66,3 +74,5 @@ async function forward(
 
 export const GET = forward;
 export const PUT = forward;
+export const POST = forward;
+export const DELETE = forward;

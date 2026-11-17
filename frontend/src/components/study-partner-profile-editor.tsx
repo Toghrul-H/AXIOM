@@ -3,6 +3,10 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { PageHeading } from "@/components/page-heading";
+import {
+  StudyPartnerDiscovery,
+  StudyPartnerRequests,
+} from "@/components/study-partner-community";
 import { questionsApi, type Topic } from "@/lib/questions";
 import {
   type AvailabilitySlot,
@@ -111,6 +115,7 @@ export function StudyPartnerProfileEditor() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [activityVersion, setActivityVersion] = useState(0);
   const slotCounter = useRef(0);
 
   async function load() {
@@ -262,264 +267,278 @@ export function StudyPartnerProfileEditor() {
           </button>
         </section>
       ) : (
-        <form className="panel study-partner-form" onSubmit={submit}>
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">YOUR PROFILE</p>
-              <h2>Choose what other students can see</h2>
+        <>
+          <form className="panel study-partner-form" onSubmit={submit}>
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">YOUR PROFILE</p>
+                <h2>Choose what other students can see</h2>
+              </div>
             </div>
-          </div>
-          <p className="study-partner-privacy">
-            Your email, Neptun code, and exact availability are never shown in
-            partner discovery. Only your display name, introduction, study
-            format, and selected topics may be visible when you opt in.
-          </p>
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
+            <p className="study-partner-privacy">
+              Your email, Neptun code, and exact availability are never shown in
+              partner discovery. Only your display name, introduction, study
+              format, and selected topics may be visible when you opt in.
             </p>
-          )}
-          {message && (
-            <p className="success-message" role="status">
-              {message}
-            </p>
-          )}
-
-          <fieldset>
-            <legend>Participation</legend>
-            <label className="study-partner-toggle">
-              <input
-                type="checkbox"
-                checked={form.is_participating}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    is_participating: event.target.checked,
-                    is_discoverable: event.target.checked
-                      ? current.is_discoverable
-                      : false,
-                  }))
-                }
-              />
-              Participate in Study Partner
-            </label>
-            <label className="study-partner-toggle">
-              <input
-                type="checkbox"
-                disabled={!form.is_participating}
-                checked={form.is_discoverable}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    is_discoverable: event.target.checked,
-                  }))
-                }
-              />
-              Make my profile discoverable
-            </label>
-            {!form.is_participating && loadedParticipating && (
-              <p className="field-hint">
-                Saving a paused profile cancels pending Study Partner requests.
+            {error && (
+              <p className="error-message" role="alert">
+                {error}
               </p>
             )}
-          </fieldset>
-
-          <fieldset disabled={saving}>
-            <legend>Public profile</legend>
-            <label>
-              Display name
-              <input
-                aria-invalid={Boolean(errors.display_name)}
-                minLength={2}
-                maxLength={60}
-                required
-                value={form.display_name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    display_name: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            {errors.display_name && (
-              <span className="field-error">{errors.display_name}</span>
+            {message && (
+              <p className="success-message" role="status">
+                {message}
+              </p>
             )}
-            <label>
-              Study format
-              <select
-                value={form.study_format}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    study_format: event.target.value as StudyFormat,
-                  }))
-                }
-              >
-                <option value="EITHER">Online or in person</option>
-                <option value="ONLINE">Online</option>
-                <option value="IN_PERSON">In person</option>
-              </select>
-            </label>
-            <label>
-              Short introduction <span className="field-hint">(optional)</span>
-              <textarea
-                maxLength={500}
-                value={form.introduction ?? ""}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    introduction: event.target.value || null,
-                  }))
-                }
-              />
-            </label>
-          </fieldset>
 
-          <fieldset disabled={saving}>
-            <legend>Topics</legend>
-            <p className="field-hint">
-              Select separately what you want to study and what you can help
-              with.
-            </p>
-            <div className="study-partner-topic-grid">
-              <section aria-labelledby="want-to-study-heading">
-                <h3 id="want-to-study-heading">I want to study</h3>
-                {topics.map((topic) => (
-                  <label key={`want-${topic.id}`}>
-                    <input
-                      type="checkbox"
-                      checked={selected(topic.id, "WANT_TO_STUDY")}
-                      onChange={() => toggleTopic(topic.id, "WANT_TO_STUDY")}
-                    />{" "}
-                    {topic.name}
-                  </label>
-                ))}
-              </section>
-              <section aria-labelledby="can-help-heading">
-                <h3 id="can-help-heading">I can help with</h3>
-                {topics.map((topic) => (
-                  <label key={`help-${topic.id}`}>
-                    <input
-                      type="checkbox"
-                      checked={selected(topic.id, "CAN_HELP")}
-                      onChange={() => toggleTopic(topic.id, "CAN_HELP")}
-                    />{" "}
-                    {topic.name}
-                  </label>
-                ))}
-              </section>
-            </div>
-            {errors.topics && (
-              <span className="field-error">{errors.topics}</span>
-            )}
-          </fieldset>
+            <fieldset>
+              <legend>Participation</legend>
+              <label className="study-partner-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.is_participating}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      is_participating: event.target.checked,
+                      is_discoverable: event.target.checked
+                        ? current.is_discoverable
+                        : false,
+                    }))
+                  }
+                />
+                Participate in Study Partner
+              </label>
+              <label className="study-partner-toggle">
+                <input
+                  type="checkbox"
+                  disabled={!form.is_participating}
+                  checked={form.is_discoverable}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      is_discoverable: event.target.checked,
+                    }))
+                  }
+                />
+                Make my profile discoverable
+              </label>
+              {!form.is_participating && loadedParticipating && (
+                <p className="field-hint">
+                  Saving a paused profile cancels pending Study Partner
+                  requests.
+                </p>
+              )}
+            </fieldset>
 
-          <fieldset disabled={saving}>
-            <legend>Weekly availability</legend>
-            <p className="field-hint">
-              This helps calculate compatibility but is not shown to other
-              students.
-            </p>
-            <div className="study-partner-slots">
-              {form.availability.map((slot) => (
-                <div className="study-partner-slot" key={slot.key}>
-                  <label>
-                    Day
-                    <select
-                      value={slot.weekday}
-                      onChange={(event) =>
-                        updateSlot(slot.key, {
-                          weekday: Number(event.target.value),
-                        })
+            <fieldset disabled={saving}>
+              <legend>Public profile</legend>
+              <label>
+                Display name
+                <input
+                  aria-invalid={Boolean(errors.display_name)}
+                  minLength={2}
+                  maxLength={60}
+                  required
+                  value={form.display_name}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      display_name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              {errors.display_name && (
+                <span className="field-error">{errors.display_name}</span>
+              )}
+              <label>
+                Study format
+                <select
+                  value={form.study_format}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      study_format: event.target.value as StudyFormat,
+                    }))
+                  }
+                >
+                  <option value="EITHER">Online or in person</option>
+                  <option value="ONLINE">Online</option>
+                  <option value="IN_PERSON">In person</option>
+                </select>
+              </label>
+              <label>
+                Short introduction{" "}
+                <span className="field-hint">(optional)</span>
+                <textarea
+                  maxLength={500}
+                  value={form.introduction ?? ""}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      introduction: event.target.value || null,
+                    }))
+                  }
+                />
+              </label>
+            </fieldset>
+
+            <fieldset disabled={saving}>
+              <legend>Topics</legend>
+              <p className="field-hint">
+                Select separately what you want to study and what you can help
+                with.
+              </p>
+              <div className="study-partner-topic-grid">
+                <section aria-labelledby="want-to-study-heading">
+                  <h3 id="want-to-study-heading">I want to study</h3>
+                  {topics.map((topic) => (
+                    <label key={`want-${topic.id}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected(topic.id, "WANT_TO_STUDY")}
+                        onChange={() => toggleTopic(topic.id, "WANT_TO_STUDY")}
+                      />{" "}
+                      {topic.name}
+                    </label>
+                  ))}
+                </section>
+                <section aria-labelledby="can-help-heading">
+                  <h3 id="can-help-heading">I can help with</h3>
+                  {topics.map((topic) => (
+                    <label key={`help-${topic.id}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected(topic.id, "CAN_HELP")}
+                        onChange={() => toggleTopic(topic.id, "CAN_HELP")}
+                      />{" "}
+                      {topic.name}
+                    </label>
+                  ))}
+                </section>
+              </div>
+              {errors.topics && (
+                <span className="field-error">{errors.topics}</span>
+              )}
+            </fieldset>
+
+            <fieldset disabled={saving}>
+              <legend>Weekly availability</legend>
+              <p className="field-hint">
+                This helps calculate compatibility but is not shown to other
+                students.
+              </p>
+              <div className="study-partner-slots">
+                {form.availability.map((slot) => (
+                  <div className="study-partner-slot" key={slot.key}>
+                    <label>
+                      Day
+                      <select
+                        value={slot.weekday}
+                        onChange={(event) =>
+                          updateSlot(slot.key, {
+                            weekday: Number(event.target.value),
+                          })
+                        }
+                      >
+                        {weekdays.map((day, index) => (
+                          <option key={day} value={index}>
+                            {day}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      From
+                      <input
+                        type="time"
+                        value={minutesToTime(slot.start_minute)}
+                        onChange={(event) =>
+                          updateSlot(slot.key, {
+                            start_minute: timeToMinutes(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Until
+                      <input
+                        type="time"
+                        disabled={slot.end_minute === 1440}
+                        value={
+                          slot.end_minute === 1440
+                            ? ""
+                            : minutesToTime(slot.end_minute)
+                        }
+                        onChange={(event) =>
+                          updateSlot(slot.key, {
+                            end_minute: timeToMinutes(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="study-partner-midnight">
+                      <input
+                        type="checkbox"
+                        checked={slot.end_minute === 1440}
+                        onChange={(event) =>
+                          updateSlot(slot.key, {
+                            end_minute: event.target.checked
+                              ? 1440
+                              : Math.min(1439, slot.start_minute + 60),
+                          })
+                        }
+                      />{" "}
+                      End at midnight
+                    </label>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          availability: current.availability.filter(
+                            (item) => item.key !== slot.key,
+                          ),
+                        }))
                       }
                     >
-                      {weekdays.map((day, index) => (
-                        <option key={day} value={index}>
-                          {day}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    From
-                    <input
-                      type="time"
-                      value={minutesToTime(slot.start_minute)}
-                      onChange={(event) =>
-                        updateSlot(slot.key, {
-                          start_minute: timeToMinutes(event.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Until
-                    <input
-                      type="time"
-                      disabled={slot.end_minute === 1440}
-                      value={
-                        slot.end_minute === 1440
-                          ? ""
-                          : minutesToTime(slot.end_minute)
-                      }
-                      onChange={(event) =>
-                        updateSlot(slot.key, {
-                          end_minute: timeToMinutes(event.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="study-partner-midnight">
-                    <input
-                      type="checkbox"
-                      checked={slot.end_minute === 1440}
-                      onChange={(event) =>
-                        updateSlot(slot.key, {
-                          end_minute: event.target.checked
-                            ? 1440
-                            : Math.min(1439, slot.start_minute + 60),
-                        })
-                      }
-                    />{" "}
-                    End at midnight
-                  </label>
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() =>
-                      setForm((current) => ({
-                        ...current,
-                        availability: current.availability.filter(
-                          (item) => item.key !== slot.key,
-                        ),
-                      }))
-                    }
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-            {errors.availability && (
-              <span className="field-error">{errors.availability}</span>
-            )}
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={addSlot}
-              disabled={form.availability.length >= 28 || saving}
-            >
-              Add availability
-            </button>
-          </fieldset>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {errors.availability && (
+                <span className="field-error">{errors.availability}</span>
+              )}
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={addSlot}
+                disabled={form.availability.length >= 28 || saving}
+              >
+                Add availability
+              </button>
+            </fieldset>
 
-          <div className="quiz-actions">
-            <button className="button button-primary" disabled={saving}>
-              {saving ? "Saving profile…" : "Save profile"}
-            </button>
-          </div>
-        </form>
+            <div className="quiz-actions">
+              <button className="button button-primary" disabled={saving}>
+                {saving ? "Saving profile…" : "Save profile"}
+              </button>
+            </div>
+          </form>
+          <StudyPartnerDiscovery
+            topics={topics}
+            enabled={loadedParticipating}
+            refreshKey={activityVersion}
+            onActivity={() => setActivityVersion((current) => current + 1)}
+          />
+          <StudyPartnerRequests
+            refreshKey={activityVersion}
+            onActivity={() => setActivityVersion((current) => current + 1)}
+          />
+        </>
       )}
     </>
   );
