@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.auth_models import User
+from app.course_models import CourseChapter
 from app.database import get_engine
 from app.models import Topic
 from app.routers.study_partner import accept_request, create_block, create_request, decline_request, put_my_profile
@@ -50,7 +51,7 @@ def study_partner_schema():
             connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
             config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
             config.attributes["connection"] = connection
-            command.upgrade(config, "0023")
+            command.upgrade(config, "0024")
         except Exception:
             connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             raise
@@ -110,6 +111,24 @@ def test_postgres_reciprocal_concurrency_creates_one_pending_request(study_partn
     session, connection = schema_session(study_partner_schema)
     try:
         assert session.scalar(select(func.count(StudyPartnerRequest.id)).where(StudyPartnerRequest.status == "PENDING")) == 1
+    finally:
+        session.close()
+        connection.close()
+
+
+def test_postgres_course_migration_is_present(study_partner_schema):
+    session, connection = schema_session(study_partner_schema)
+    try:
+        config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0023")
+        assert connection.execute(text("SELECT to_regclass('course_chapters')")).scalar() is None
+        command.upgrade(config, "0024")
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0024"
+        chapter = CourseChapter(title="Sets", slug="sets", position=0)
+        session.add(chapter)
+        session.commit()
+        assert chapter.id is not None
     finally:
         session.close()
         connection.close()

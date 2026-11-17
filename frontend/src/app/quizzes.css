@@ -107,6 +107,220 @@
   cursor: wait;
 }
 
+.course-layout,
+.course-manager-list {
+  display: grid;
+  gap: 18px;
+  margin-top: 24px;
+}
+.course-chapter ol,
+.course-question-links {
+  display: grid;
+  gap: 8px;
+  padding-left: 20px;
+}
+.course-lesson-link {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--champagne);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 13px;
+  text-align: left;
+  width: 100%;
+}
+.course-lesson-link span {
+  color: var(--navy);
+  font-size: 0.85rem;
+}
+.course-reading {
+  max-width: 900px;
+}
+.course-content {
+  line-height: 1.8;
+  margin: 20px 0 28px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.course-create,
+.course-lesson-form,
+.course-inline-form,
+.course-lesson-editor form {
+  display: grid;
+  gap: 12px;
+}
+.course-create {
+  margin: 20px 0;
+  max-width: 760px;
+}
+.course-inline-form {
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+}
+.course-manager-chapter > header,
+.course-actions,
+.course-order-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+.course-manager-chapter > header h2 {
+  margin: 8px 0;
+}
+.course-actions {
+  justify-content: flex-start;
+  margin: 14px 0;
+}
+.course-lessons {
+  display: grid;
+  gap: 10px;
+}
+.course-lesson-editor {
+  border-top: 1px solid var(--champagne);
+  padding-top: 10px;
+}
+.course-lesson-editor summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.course-lesson-editor form {
+  margin-top: 14px;
+}
+.course-question-picker {
+  border: 1px solid var(--champagne);
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+}
+.course-question-picker label {
+  display: flex;
+  gap: 8px;
+  line-height: 1.4;
+}
+.course-tools-card,
+.visualization-panel > header,
+.set-result {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+.course-tools-card {
+  margin-top: 20px;
+}
+.visualization-intro {
+  margin-bottom: 20px;
+}
+.visualization-panel {
+  margin: 20px 0;
+}
+.visualization-panel > header h2,
+.visualization-panel > header p {
+  margin: 0;
+}
+.visualization-panel > p {
+  line-height: 1.65;
+}
+.visualization-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.truth-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+}
+.truth-table {
+  border-collapse: collapse;
+  min-width: max-content;
+  width: 100%;
+}
+.truth-table th,
+.truth-table td {
+  border: 1px solid var(--champagne);
+  padding: 8px 12px;
+  text-align: center;
+}
+.truth-table th {
+  background: var(--warm-beige);
+  font-weight: 700;
+}
+.set-inputs {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.set-inputs textarea {
+  min-height: 92px;
+  resize: vertical;
+  width: 100%;
+}
+.set-operations {
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 0;
+}
+.set-operations label {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+.set-result {
+  align-items: stretch;
+  border-top: 1px solid var(--champagne);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.set-result h3 {
+  margin-top: 0;
+}
+.venn-diagram {
+  max-width: 300px;
+  width: 100%;
+}
+.venn-region,
+.venn-overlap {
+  fill: var(--ivory);
+  stroke: var(--navy);
+  stroke-width: 2;
+}
+.venn-selected,
+.venn-overlap-selected {
+  fill: color-mix(in srgb, var(--gold) 60%, white);
+  stroke: var(--navy);
+  stroke-width: 2;
+}
+.venn-overlap,
+.venn-overlap-selected {
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .course-inline-form {
+    grid-template-columns: 1fr;
+  }
+  .course-lesson-link {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .set-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
 .exam-list-items {
   display: grid;
   gap: 10px;

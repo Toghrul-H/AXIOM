@@ -96,6 +96,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : [
         { href: "/student", label: "Dashboard", icon: LayoutDashboard },
         { href: "/student/learn", label: "Learn", icon: BookOpen },
+        { href: "/student/course", label: "Course", icon: BookOpen },
         { href: "/student/practice", label: "Practice", icon: Shapes },
         { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
         { href: "/student/history", label: "History", icon: BookOpen },
@@ -135,6 +136,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     links.push({ href: "/teacher/exams", label: "Exam Builder", icon: Shapes });
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
+      href: "/teacher/course",
+      label: "Course management",
+      icon: BookOpen,
+    });
+  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+    links.push({
       href: "/teacher/practice-sheets",
       label: "Practice Sheets",
       icon: Shapes,
@@ -150,10 +157,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? "Assessment Documents"
       : undefined) ??
     (path.startsWith("/teacher/exams") ? "Exam Builder" : undefined) ??
+    (path.startsWith("/teacher/course") ? "Course management" : undefined) ??
     (path.startsWith("/teacher/practice-sheets")
       ? "Practice Sheets"
       : undefined) ??
     (path.startsWith("/student/study-partner") ? "Study Partner" : undefined) ??
+    (path.startsWith("/student/course") ? "Course" : undefined) ??
     (path.startsWith("/teacher/grading/") ? "Manual Grading" : undefined) ??
     links.find((item) => item.href === path)?.label ??
     futureTools.find((item) => path === `/teacher/tools/${item.slug}`)?.title ??
