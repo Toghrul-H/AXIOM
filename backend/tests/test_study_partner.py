@@ -176,6 +176,61 @@ def test_discovery_hides_private_fields_filters_and_blocks():
         session.close()
 
 
+def test_discovery_uses_explainable_stable_ranking_without_exposing_scores():
+    session, student, partner, third, fourth, _, topic, second_topic = setup()
+    try:
+        put_my_profile(
+            profile_payload(
+                "Ada",
+                topic.id,
+                study_format="ONLINE",
+                topics=[
+                    {"topic_id": topic.id, "purpose": "WANT_TO_STUDY"},
+                    {"topic_id": second_topic.id, "purpose": "CAN_HELP"},
+                ],
+            ),
+            session,
+            student,
+        )
+        put_my_profile(
+            profile_payload(
+                "Bela",
+                topic.id,
+                study_format="ONLINE",
+                topics=[{"topic_id": topic.id, "purpose": "WANT_TO_STUDY"}],
+            ),
+            session,
+            partner,
+        )
+        put_my_profile(
+            profile_payload(
+                "Csilla",
+                topic.id,
+                study_format="EITHER",
+                topics=[{"topic_id": topic.id, "purpose": "CAN_HELP"}],
+            ),
+            session,
+            third,
+        )
+        put_my_profile(
+            profile_payload(
+                "Dora",
+                second_topic.id,
+                study_format="ONLINE",
+                topics=[{"topic_id": second_topic.id, "purpose": "WANT_TO_STUDY"}],
+            ),
+            session,
+            fourth,
+        )
+        first = partners(session, student, [], None, 0, 20)
+        second = partners(session, student, [], None, 0, 20)
+        assert [item["profile_id"] for item in first] == [partner.id, fourth.id, third.id]
+        assert [item["profile_id"] for item in second] == [item["profile_id"] for item in first]
+        assert all("rank" not in item and "email" not in item and "availability" not in item for item in first)
+    finally:
+        session.close()
+
+
 def test_request_lifecycle_reciprocal_guard_pause_and_blocking():
     session, student, partner, third, fourth, _, topic, _ = setup()
     try:
@@ -195,6 +250,8 @@ def test_request_lifecycle_reciprocal_guard_pause_and_blocking():
         with pytest.raises(HTTPException) as accepted_again:
             create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
         assert accepted_again.value.status_code == 409
+        create_block(StudyPartnerBlockCreate(blocked_user_id=partner.id), session, student)
+        assert session.get(StudyPartnerRequest, request["id"]).status == "CANCELLED"
         cancelled = create_request(StudyPartnerRequestCreate(recipient_profile_id=student.id), session, third)
         assert cancel_request(cancelled["id"], session, third)["status"] == "CANCELLED"
         with pytest.raises(HTTPException) as cooldown:
@@ -213,7 +270,7 @@ def test_request_lifecycle_reciprocal_guard_pause_and_blocking():
         with pytest.raises(HTTPException) as paused:
             partners(session, student, [], None, 0, 20)
         assert paused.value.status_code == 409
-        assert any(item["status"] == "ACCEPTED" for item in requests(session, student, "outgoing", None))
+        assert any(item["status"] == "CANCELLED" for item in requests(session, student, "outgoing", None))
     finally:
         session.close()
 
@@ -229,6 +286,12 @@ def test_hidden_and_paused_profiles_reject_new_requests_without_private_leaks():
             create_request(StudyPartnerRequestCreate(recipient_profile_id=999999), session, student)
         assert hidden.value.status_code == unknown.value.status_code == 404
         assert hidden.value.detail == unknown.value.detail == "Study partner not available"
+        with pytest.raises(HTTPException) as hidden_block:
+            create_block(StudyPartnerBlockCreate(blocked_user_id=partner.id), session, student)
+        with pytest.raises(HTTPException) as unknown_block:
+            create_block(StudyPartnerBlockCreate(blocked_user_id=999999), session, student)
+        assert hidden_block.value.status_code == unknown_block.value.status_code == 404
+        assert hidden_block.value.detail == unknown_block.value.detail == "Study partner not available"
         put_my_profile(profile_payload("Bela", topic.id, is_participating=False, is_discoverable=False), session, partner)
         with pytest.raises(HTTPException) as paused:
             create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)

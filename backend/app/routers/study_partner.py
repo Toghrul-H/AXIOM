@@ -1,5 +1,6 @@
 """Student-only, privacy-preserving Study Partner API."""
 
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
@@ -98,6 +99,20 @@ def cancel_pending_between(session: Session, first_user_id: int, second_user_id:
     session.execute(update(StudyPartnerRequest).where(*where).values(status="CANCELLED", resolved_at=now(), updated_at=now()))
 
 
+def cancel_active_between(session: Session, first_user_id: int, second_user_id: int) -> None:
+    """A block ends any active connection without deleting its private history."""
+    low, high = sorted((first_user_id, second_user_id))
+    session.execute(
+        update(StudyPartnerRequest)
+        .where(
+            StudyPartnerRequest.pair_low_user_id == low,
+            StudyPartnerRequest.pair_high_user_id == high,
+            StudyPartnerRequest.status.in_(("PENDING", "ACCEPTED")),
+        )
+        .values(status="CANCELLED", resolved_at=now(), updated_at=now())
+    )
+
+
 def is_blocked(session: Session, first_user_id: int, second_user_id: int) -> bool:
     return bool(
         session.scalar(
@@ -108,6 +123,16 @@ def is_blocked(session: Session, first_user_id: int, second_user_id: int) -> boo
                 )
             )
         )
+    )
+
+
+def lock_pair(session: Session, first_user_id: int, second_user_id: int) -> None:
+    """Serialize pair creation/blocking without relying on a cross-table constraint."""
+    session.execute(
+        select(User.id)
+        .where(User.id.in_(sorted((first_user_id, second_user_id))))
+        .order_by(User.id)
+        .with_for_update()
     )
 
 
@@ -123,9 +148,13 @@ def availability_compatible(first: list[StudyPartnerAvailability], second: list[
     )
 
 
-def public_partner_read(session: Session, actor_profile: StudyPartnerProfile, partner: StudyPartnerProfile) -> dict:
-    actor_topics = {(entry.topic_id, entry.purpose) for entry, _ in topic_rows(session, actor_profile.user_id)}
-    partner_rows = topic_rows(session, partner.user_id)
+def public_partner_read_from_data(
+    actor_topics: set[tuple[int, str]],
+    actor_availability: list[StudyPartnerAvailability],
+    partner: StudyPartnerProfile,
+    partner_rows: list[tuple[StudyPartnerTopic, Topic]],
+    partner_availability: list[StudyPartnerAvailability],
+) -> dict:
     actor_wants = {topic_id for topic_id, purpose in actor_topics if purpose == "WANT_TO_STUDY"}
     actor_helps = {topic_id for topic_id, purpose in actor_topics if purpose == "CAN_HELP"}
     shared = [row for row in partner_rows if row[0].purpose == "WANT_TO_STUDY" and row[0].topic_id in actor_wants]
@@ -143,9 +172,31 @@ def public_partner_read(session: Session, actor_profile: StudyPartnerProfile, pa
         "shared_study_topics": [topic_read(row) for row in shared],
         "complementary_topics": [topic_read(row) for row in complementary],
         "has_compatible_availability": availability_compatible(
-            availability_rows(session, actor_profile.user_id), availability_rows(session, partner.user_id)
+            actor_availability, partner_availability
         ),
     }
+
+
+def public_partner_read(session: Session, actor_profile: StudyPartnerProfile, partner: StudyPartnerProfile) -> dict:
+    return public_partner_read_from_data(
+        {(entry.topic_id, entry.purpose) for entry, _ in topic_rows(session, actor_profile.user_id)},
+        availability_rows(session, actor_profile.user_id),
+        partner,
+        topic_rows(session, partner.user_id),
+        availability_rows(session, partner.user_id),
+    )
+
+
+def partner_rank(actor_profile: StudyPartnerProfile, partner: StudyPartnerProfile, public: dict) -> tuple[int, int, int, int, int]:
+    """Deterministic, server-only ordering; no score is disclosed to students."""
+    format_match = 2 if actor_profile.study_format == partner.study_format else 1
+    return (
+        -len(public["shared_study_topics"]),
+        -len(public["complementary_topics"]),
+        -format_match,
+        -int(public["has_compatible_availability"]),
+        partner.user_id,
+    )
 
 
 def request_read(session: Session, request: StudyPartnerRequest, actor_id: int) -> dict:
@@ -231,7 +282,6 @@ def partners(
             ~blocked_by_actor,
             ~actor_blocked,
         )
-        .order_by(StudyPartnerProfile.updated_at.desc(), StudyPartnerProfile.user_id)
     )
     if topic_id:
         statement = statement.where(
@@ -239,8 +289,41 @@ def partners(
         )
     if study_format and study_format != "EITHER":
         statement = statement.where(StudyPartnerProfile.study_format.in_((study_format, "EITHER")))
-    rows = list(session.scalars(statement.offset(offset).limit(limit)))
-    return [public_partner_read(session, actor_profile, partner) for partner in rows if formats_compatible(actor_profile.study_format, partner.study_format)]
+    candidates = list(session.scalars(statement))
+    candidate_ids = [partner.user_id for partner in candidates]
+    if not candidate_ids:
+        return []
+    rows_by_partner: dict[int, list[tuple[StudyPartnerTopic, Topic]]] = defaultdict(list)
+    for preference, topic in session.execute(
+        select(StudyPartnerTopic, Topic)
+        .join(Topic, Topic.id == StudyPartnerTopic.topic_id)
+        .where(StudyPartnerTopic.profile_user_id.in_(candidate_ids))
+        .order_by(Topic.sort_order, Topic.id, StudyPartnerTopic.purpose)
+    ):
+        rows_by_partner[preference.profile_user_id].append((preference, topic))
+    availability_by_partner: dict[int, list[StudyPartnerAvailability]] = defaultdict(list)
+    for slot in session.scalars(
+        select(StudyPartnerAvailability)
+        .where(StudyPartnerAvailability.profile_user_id.in_(candidate_ids))
+        .order_by(StudyPartnerAvailability.weekday, StudyPartnerAvailability.start_minute, StudyPartnerAvailability.end_minute)
+    ):
+        availability_by_partner[slot.profile_user_id].append(slot)
+    actor_topics = {(entry.topic_id, entry.purpose) for entry, _ in topic_rows(session, actor_profile.user_id)}
+    actor_availability = availability_rows(session, actor_profile.user_id)
+    ranked = []
+    for partner in candidates:
+        if not formats_compatible(actor_profile.study_format, partner.study_format):
+            continue
+        public = public_partner_read_from_data(
+            actor_topics,
+            actor_availability,
+            partner,
+            rows_by_partner[partner.user_id],
+            availability_by_partner[partner.user_id],
+        )
+        ranked.append((partner_rank(actor_profile, partner, public), public))
+    ranked.sort(key=lambda item: item[0])
+    return [public for _, public in ranked[offset : offset + limit]]
 
 
 @router.post("/study-partner/requests", response_model=StudyPartnerRequestRead, status_code=status.HTTP_201_CREATED)
@@ -248,6 +331,7 @@ def create_request(payload: StudyPartnerRequestCreate, session: DB, actor: Stude
     require_participating_profile(session, actor.id)
     if payload.recipient_profile_id == actor.id:
         raise HTTPException(422, "You cannot send a request to yourself")
+    lock_pair(session, actor.id, payload.recipient_profile_id)
     recipient = session.get(StudyPartnerProfile, payload.recipient_profile_id)
     recipient_user = session.get(User, payload.recipient_profile_id)
     if (
@@ -308,16 +392,22 @@ def requests(
     return [request_read(session, item, actor.id) for item in session.scalars(statement)]
 
 
-def transition_request(session: Session, request_id: int, actor_id: int, action: str) -> StudyPartnerRequest:
+def transition_request(session: Session, request_id: int, actor_id: int, action: Literal["accept", "decline", "cancel"]) -> StudyPartnerRequest:
     request = owned_request_or_404(session, request_id, actor_id)
-    if request.status != "PENDING":
-        raise HTTPException(409, "This study request is no longer pending")
     if action in {"accept", "decline"} and request.recipient_user_id != actor_id:
         raise HTTPException(404, "Study request not found")
     if action == "cancel" and request.requester_user_id != actor_id:
         raise HTTPException(404, "Study request not found")
-    request.status = {"accept": "ACCEPTED", "decline": "DECLINED", "cancel": "CANCELLED"}[action]
-    request.resolved_at = now()
+    next_status = {"accept": "ACCEPTED", "decline": "DECLINED", "cancel": "CANCELLED"}[action]
+    result = session.execute(
+        update(StudyPartnerRequest)
+        .where(StudyPartnerRequest.id == request_id, StudyPartnerRequest.status == "PENDING")
+        .values(status=next_status, resolved_at=now(), updated_at=now())
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(409, "This study request is no longer pending")
     session.commit()
     session.refresh(request)
     return request
@@ -342,15 +432,37 @@ def cancel_request(request_id: Id, session: DB, actor: Student):
 def create_block(payload: StudyPartnerBlockCreate, session: DB, actor: Student):
     if payload.blocked_user_id == actor.id:
         raise HTTPException(422, "You cannot block yourself")
+    lock_pair(session, actor.id, payload.blocked_user_id)
     target = session.get(User, payload.blocked_user_id)
-    if target is None or target.role != "STUDENT" or not target.is_active or not target.email_verified or target.is_legacy:
+    target_profile = session.get(StudyPartnerProfile, payload.blocked_user_id)
+    is_known_counterpart = bool(
+        session.scalar(
+            select(StudyPartnerRequest.id)
+            .where(
+                or_(
+                    and_(StudyPartnerRequest.requester_user_id == actor.id, StudyPartnerRequest.recipient_user_id == payload.blocked_user_id),
+                    and_(StudyPartnerRequest.requester_user_id == payload.blocked_user_id, StudyPartnerRequest.recipient_user_id == actor.id),
+                )
+            )
+            .limit(1)
+        )
+    )
+    if (
+        target is None
+        or target_profile is None
+        or not ((target_profile.is_participating and target_profile.is_discoverable) or is_known_counterpart)
+        or target.role != "STUDENT"
+        or not target.is_active
+        or not target.email_verified
+        or target.is_legacy
+    ):
         raise HTTPException(404, "Study partner not available")
     block = session.get(StudyPartnerBlock, {"blocker_user_id": actor.id, "blocked_user_id": payload.blocked_user_id})
     if block is not None:
         return {"blocked_user_id": block.blocked_user_id, "created_at": block.created_at}
     block = StudyPartnerBlock(blocker_user_id=actor.id, blocked_user_id=payload.blocked_user_id)
     session.add(block)
-    cancel_pending_between(session, actor.id, payload.blocked_user_id)
+    cancel_active_between(session, actor.id, payload.blocked_user_id)
     try:
         session.commit()
     except IntegrityError:

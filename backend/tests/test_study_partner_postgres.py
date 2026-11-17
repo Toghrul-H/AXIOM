@@ -17,9 +17,9 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 from app.auth_models import User
 from app.database import get_engine
 from app.models import Topic
-from app.routers.study_partner import create_request, put_my_profile
+from app.routers.study_partner import accept_request, create_block, create_request, decline_request, put_my_profile
 from app.study_partner_models import StudyPartnerRequest
-from app.study_partner_schemas import StudyPartnerProfileWrite, StudyPartnerRequestCreate
+from app.study_partner_schemas import StudyPartnerBlockCreate, StudyPartnerProfileWrite, StudyPartnerRequestCreate
 
 
 pytestmark = [
@@ -110,6 +110,132 @@ def test_postgres_reciprocal_concurrency_creates_one_pending_request(study_partn
     session, connection = schema_session(study_partner_schema)
     try:
         assert session.scalar(select(func.count(StudyPartnerRequest.id)).where(StudyPartnerRequest.status == "PENDING")) == 1
+    finally:
+        session.close()
+        connection.close()
+
+
+def test_postgres_transition_and_block_races_remain_controlled(study_partner_schema):
+    first_id, second_id, topic_id = seed(study_partner_schema)
+    session, connection = schema_session(study_partner_schema)
+    try:
+        first = session.get(User, first_id)
+        assert first is not None
+        request_id = create_request(StudyPartnerRequestCreate(recipient_profile_id=second_id), session, first)["id"]
+    finally:
+        session.close()
+        connection.close()
+
+    barrier = Barrier(2)
+
+    def transition(action):
+        session, connection = schema_session(study_partner_schema)
+        try:
+            actor = session.get(User, second_id)
+            assert actor is not None
+            barrier.wait(timeout=10)
+            try:
+                result = (accept_request if action == "accept" else decline_request)(request_id, session, actor)
+                return "updated", result["status"]
+            except HTTPException as error:
+                return "error", error.status_code
+        finally:
+            session.close()
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(transition, ("accept", "decline")))
+    assert sorted(outcomes)[0] == ("error", 409)
+    assert sorted(outcomes)[1] in (("updated", "ACCEPTED"), ("updated", "DECLINED"))
+
+    session, connection = schema_session(study_partner_schema)
+    try:
+        first = session.get(User, first_id)
+        third = User(email="study-c@example.test", password_hash="x", role="STUDENT", email_verified=True)
+        session.add(third)
+        session.flush()
+        put_my_profile(profile("Csilla", topic_id), session, third)
+        assert first is not None
+        third_id = third.id
+        second_request_id = create_request(StudyPartnerRequestCreate(recipient_profile_id=third_id), session, first)["id"]
+    finally:
+        session.close()
+        connection.close()
+
+    barrier = Barrier(2)
+
+    def accept_or_block(action):
+        session, connection = schema_session(study_partner_schema)
+        try:
+            actor_id = third_id if action == "accept" else first_id
+            actor = session.get(User, actor_id)
+            assert actor is not None
+            barrier.wait(timeout=10)
+            try:
+                if action == "accept":
+                    accept_request(second_request_id, session, actor)
+                else:
+                    create_block(StudyPartnerBlockCreate(blocked_user_id=third_id), session, actor)
+                return "completed"
+            except HTTPException as error:
+                return error.status_code
+        finally:
+            session.close()
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(accept_or_block, ("accept", "block")))
+    assert "completed" in outcomes
+    session, connection = schema_session(study_partner_schema)
+    try:
+        assert session.get(StudyPartnerRequest, second_request_id).status == "CANCELLED"
+    finally:
+        session.close()
+        connection.close()
+
+    session, connection = schema_session(study_partner_schema)
+    try:
+        fourth = User(email="study-d@example.test", password_hash="x", role="STUDENT", email_verified=True)
+        session.add(fourth)
+        session.flush()
+        put_my_profile(profile("Dora", topic_id), session, fourth)
+        fourth_id = fourth.id
+    finally:
+        session.close()
+        connection.close()
+
+    barrier = Barrier(2)
+
+    def request_or_block(action):
+        session, connection = schema_session(study_partner_schema)
+        try:
+            actor = session.get(User, first_id)
+            assert actor is not None
+            barrier.wait(timeout=10)
+            try:
+                if action == "request":
+                    create_request(StudyPartnerRequestCreate(recipient_profile_id=fourth_id), session, actor)
+                    return "created"
+                create_block(StudyPartnerBlockCreate(blocked_user_id=fourth_id), session, actor)
+                return "blocked"
+            except HTTPException as error:
+                return error.status_code
+        finally:
+            session.close()
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(request_or_block, ("request", "block")))
+    assert "blocked" in outcomes
+    session, connection = schema_session(study_partner_schema)
+    try:
+        assert session.scalar(
+            select(func.count(StudyPartnerRequest.id)).where(
+                StudyPartnerRequest.pair_low_user_id == min(first_id, fourth_id),
+                StudyPartnerRequest.pair_high_user_id == max(first_id, fourth_id),
+                StudyPartnerRequest.status == "PENDING",
+            )
+        ) == 0
     finally:
         session.close()
         connection.close()
