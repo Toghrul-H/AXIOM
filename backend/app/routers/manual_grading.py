@@ -10,6 +10,7 @@ from app.database import get_session
 from app.quiz_models import QuizAttempt, AttemptAnswer
 from app.services.quizzes import review
 from app.manual_grading_schemas import ManualGradeWrite, GradingQueue, GradingAttempt
+from app.services.notifications import create_notification
 
 router = APIRouter(prefix='/grading/attempts', tags=['Manual grading'])
 DB = Annotated[Session, Depends(get_session)]
@@ -92,6 +93,29 @@ def grade(attempt_id: UUID, answer_id: Annotated[int, Path(gt=0)], payload: Manu
     item.manual_feedback = payload.feedback
     item.graded_by_id = actor.id
     item.graded_at = datetime.now(timezone.utc)
+    all_manually_graded = all(
+        answer.manual_points is not None
+        for answer in attempt.items
+        if answer.response_type == "FREE_RESPONSE"
+    )
+    student = session.get(User, attempt.user_id)
+    if (
+        all_manually_graded
+        and student is not None
+        and student.role == "STUDENT"
+        and student.is_active
+        and student.email_verified
+        and not student.is_legacy
+    ):
+        create_notification(
+            session,
+            recipient_user_id=student.id,
+            actor_user_id=actor.id,
+            kind="MANUAL_GRADING_COMPLETED",
+            dedupe_key=f"manual-grading:{attempt.id}:completed",
+            payload={"title": "Manual grading completed"},
+            link="/student/history",
+        )
     session.commit()
     session.refresh(attempt)
     return staff_review(session, attempt)

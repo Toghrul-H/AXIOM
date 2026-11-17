@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from app.auth_models import User
 from app.notification_models import Notification
 
 
@@ -37,6 +38,20 @@ _SENSITIVE_KEY = re.compile(
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def eligible_student_ids(session: Session) -> list[int]:
+    """Recipients for globally visible student-facing course material."""
+    return list(
+        session.scalars(
+            select(User.id).where(
+                User.role == "STUDENT",
+                User.is_active.is_(True),
+                User.email_verified.is_(True),
+                User.is_legacy.is_(False),
+            )
+        )
+    )
 
 
 def validate_link(link: str) -> str:

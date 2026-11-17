@@ -15,6 +15,7 @@ from app.services.quizzes import get_quiz, save_quiz, start_attempt, get_attempt
 router = APIRouter(tags=['Quizzes'])
 DB = Annotated[Session,Depends(get_session)]
 Identity = Annotated[User,Depends(student_user)]
+Staff = Annotated[User,Depends(staff_user)]
 Id = Annotated[int,Path(gt=0)]
 Limit = Annotated[int,Query(ge=1,le=100)]
 Offset = Annotated[int,Query(ge=0)]
@@ -23,17 +24,17 @@ Offset = Annotated[int,Query(ge=0)]
 def staff_quizzes(session: DB,limit: Limit=50,offset: Offset=0):
     return list(session.scalars(select(Quiz).where(Quiz.is_practice.is_(False)).order_by(Quiz.id).offset(offset).limit(limit)))
 
-@router.post('/quizzes',dependencies=[Depends(staff_user)],response_model=QuizStaffRead,status_code=201)
-def create_quiz(payload: QuizWrite,session: DB):
-    return save_quiz(session,payload)
+@router.post('/quizzes',response_model=QuizStaffRead,status_code=201)
+def create_quiz(payload: QuizWrite,session: DB,actor: Staff):
+    return save_quiz(session,payload,actor_user_id=actor.id)
 
 @router.get('/quizzes/{quiz_id}',dependencies=[Depends(staff_user)],response_model=QuizStaffRead)
 def staff_quiz(quiz_id: Id,session: DB):
     return get_quiz(session,quiz_id)
 
-@router.put('/quizzes/{quiz_id}',dependencies=[Depends(staff_user)],response_model=QuizStaffRead)
-def update_quiz(quiz_id: Id,payload: QuizWrite,session: DB):
-    return save_quiz(session,payload,quiz_id)
+@router.put('/quizzes/{quiz_id}',response_model=QuizStaffRead)
+def update_quiz(quiz_id: Id,payload: QuizWrite,session: DB,actor: Staff):
+    return save_quiz(session,payload,quiz_id,actor.id)
 
 @router.get('/student/quizzes',response_model=list[QuizSummary])
 def student_quizzes(session: DB,identity: Identity,limit: Limit=50,offset: Offset=0):

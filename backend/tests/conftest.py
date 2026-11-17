@@ -1,6 +1,9 @@
 from uuid import uuid4
 import os
+from pathlib import Path
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi import Response
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -37,8 +40,13 @@ def disable_real_smtp(monkeypatch):
 def pytest_sessionstart(session):
     # Integration fixtures write/delete data. Never run them against a deployment.
     if os.getenv('RUN_POSTGRES_TESTS') == '1':
-        if get_engine().url.host not in {'localhost', '127.0.0.1', '::1'}:
-            raise pytest.UsageError('PostgreSQL integration tests require a local database. Configure the connection privately before running tests.')
+        engine = get_engine()
+        if engine.url.host not in {'localhost', '127.0.0.1', '::1'} or engine.url.database != 'axiom_test_db':
+            raise pytest.UsageError('PostgreSQL integration tests require the local axiom_test_db database.')
+        with engine.begin() as connection:
+            config = Config(str(Path(__file__).resolve().parents[1] / 'alembic.ini'))
+            config.attributes['connection'] = connection
+            command.upgrade(config, 'head')
 
 @pytest.fixture
 def accounts():

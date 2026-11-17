@@ -8,6 +8,7 @@ from app.quiz_models import Quiz, QuizQuestion, QuizAttempt, AttemptAnswer, Atte
 from app.quiz_schemas import QuizWrite, ActiveItem, AttemptSummary
 from app.schemas import AnswerCheck
 from app.services.grading import check_answer
+from app.services.notifications import create_notifications, eligible_student_ids
 
 
 def get_quiz(session: Session, quiz_id: int, lock=False, include_practice=False) -> Quiz:
@@ -22,8 +23,9 @@ def get_quiz(session: Session, quiz_id: int, lock=False, include_practice=False)
     return quiz
 
 
-def save_quiz(session: Session, payload: QuizWrite, quiz_id: int | None = None) -> Quiz:
+def save_quiz(session: Session, payload: QuizWrite, quiz_id: int | None = None, actor_user_id: int | None = None) -> Quiz:
     quiz = get_quiz(session, quiz_id, lock=True) if quiz_id else Quiz()
+    newly_available = not quiz.is_practice and quiz.status != 'ACTIVE' and payload.status == 'ACTIVE'
     ids = [q.question_id for q in payload.questions]
     questions = list(session.scalars(select(Question).where(Question.id.in_(ids))))
     if len(questions) != len(ids):
@@ -37,6 +39,16 @@ def save_quiz(session: Session, payload: QuizWrite, quiz_id: int | None = None) 
     session.flush()
     quiz.questions = [QuizQuestion(question_id=q.question_id,position=i,points=q.points) for i,q in enumerate(payload.questions)]
     quiz.updated_at = func.now()
+    if newly_available:
+        create_notifications(
+            session,
+            recipient_user_ids=eligible_student_ids(session),
+            actor_user_id=actor_user_id,
+            kind="QUIZ_AVAILABLE",
+            dedupe_key=f"quiz:{quiz.id}:active",
+            payload={"title": "New quiz available", "resource_id": quiz.id},
+            link="/student/quizzes",
+        )
     session.commit()
     session.refresh(quiz)
     return quiz

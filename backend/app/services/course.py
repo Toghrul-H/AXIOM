@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.course_models import CourseChapter, CourseLesson, CourseLessonQuestion
 from app.course_schemas import ChapterCreate, ChapterPatch, LessonCreate, LessonPatch
 from app.models import Question
+from app.services.notifications import create_notifications, eligible_student_ids
 
 
 def _commit(session: Session) -> None:
@@ -115,16 +116,27 @@ def create_chapter(session: Session, payload: ChapterCreate) -> CourseChapter:
 
 def update_chapter(session: Session, chapter_id: int, payload: ChapterPatch) -> CourseChapter:
     chapter = _chapter(session, chapter_id)
-    for name, value in payload.model_dump().items():
+    for name, value in payload.model_dump(exclude_unset=True).items():
         setattr(chapter, name, value)
     _commit(session)
     session.refresh(chapter)
     return chapter
 
 
-def publish_chapter(session: Session, chapter_id: int) -> CourseChapter:
+def publish_chapter(session: Session, chapter_id: int, actor_user_id: int | None = None) -> CourseChapter:
     chapter = _chapter(session, chapter_id)
+    newly_published = chapter.status != "published"
     chapter.status = "published"
+    if newly_published:
+        create_notifications(
+            session,
+            recipient_user_ids=eligible_student_ids(session),
+            actor_user_id=actor_user_id,
+            kind="COURSE_CHAPTER_PUBLISHED",
+            dedupe_key=f"course-chapter:{chapter.id}:published",
+            payload={"title": "New course chapter", "resource_id": chapter.id},
+            link="/student/course",
+        )
     _commit(session)
     session.refresh(chapter)
     return chapter
@@ -177,9 +189,21 @@ def update_lesson(session: Session, lesson_id: int, payload: LessonPatch) -> Cou
     return lesson
 
 
-def publish_lesson(session: Session, lesson_id: int) -> CourseLesson:
+def publish_lesson(session: Session, lesson_id: int, actor_user_id: int | None = None) -> CourseLesson:
     lesson = _lesson(session, lesson_id)
+    chapter = _chapter(session, lesson.chapter_id)
+    newly_published = lesson.status != "published"
     lesson.status = "published"
+    if newly_published and chapter.status == "published":
+        create_notifications(
+            session,
+            recipient_user_ids=eligible_student_ids(session),
+            actor_user_id=actor_user_id,
+            kind="COURSE_LESSON_PUBLISHED",
+            dedupe_key=f"course-lesson:{lesson.id}:published",
+            payload={"title": "New course lesson", "resource_id": lesson.id},
+            link=f"/student/course?lesson={lesson.id}",
+        )
     _commit(session)
     session.refresh(lesson)
     return lesson

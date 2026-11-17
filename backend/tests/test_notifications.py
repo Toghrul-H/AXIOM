@@ -11,6 +11,9 @@ from app.auth import get_current_user
 from app.auth_models import User
 from app.database import Base
 from app.notification_models import Notification
+from app.manual_grading_schemas import ManualGradeWrite
+from app.quiz_models import AttemptAnswer, Quiz, QuizAttempt
+from app.routers.manual_grading import grade
 from app.routers.notifications import no_store, router
 from app.services.notifications import (
     create_notification,
@@ -164,3 +167,51 @@ def test_notification_routes_require_the_existing_authenticated_user_dependency(
     response = Response()
     no_store(response)
     assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_manual_grading_notifies_only_when_the_completed_attempt_is_visible(notification_setup):
+    session, student, _, _ = notification_setup
+    staff = User(email="grader@example.test", password_hash="x", role="LECTURER")
+    quiz = Quiz(title="Proof quiz", status="ACTIVE")
+    session.add_all((staff, quiz))
+    session.flush()
+    attempt = QuizAttempt(
+        quiz_id=quiz.id,
+        user_id=student.id,
+        quiz_title=quiz.title,
+        status="SUBMITTED",
+        submitted_at=datetime.now(timezone.utc),
+        objective_total=0,
+        objective_score=0,
+    )
+    session.add(attempt)
+    session.flush()
+    answer = AttemptAnswer(
+        quiz_attempt_id=attempt.id,
+        position=0,
+        points=3,
+        question_text="Prove the statement.",
+        response_type="FREE_RESPONSE",
+        expected_answer="Reference proof.",
+        free_response="My proof.",
+    )
+    second_answer = AttemptAnswer(
+        quiz_attempt_id=attempt.id,
+        position=1,
+        points=2,
+        question_text="Prove the second statement.",
+        response_type="FREE_RESPONSE",
+        expected_answer="Second reference proof.",
+        free_response="My second proof.",
+    )
+    session.add_all((answer, second_answer))
+    session.commit()
+    assert session.scalar(select(Notification.id)) is None
+
+    grade(attempt.id, answer.id, ManualGradeWrite(points=3, feedback="Good."), session, staff)
+    assert session.scalar(select(Notification.id)) is None
+    grade(attempt.id, second_answer.id, ManualGradeWrite(points=2), session, staff)
+    grade(attempt.id, second_answer.id, ManualGradeWrite(points=1), session, staff)
+    notices = list(session.scalars(select(Notification).where(Notification.kind == "MANUAL_GRADING_COMPLETED")))
+    assert len(notices) == 1 and notices[0].recipient_user_id == student.id
+    assert notices[0].payload == {"title": "Manual grading completed"}

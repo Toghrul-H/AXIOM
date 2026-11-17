@@ -1,5 +1,6 @@
-from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine
+from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine, select
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 import pytest
@@ -8,11 +9,14 @@ from fastapi import HTTPException
 from app.auth import manager_user, student_user
 from app.auth_models import User
 from app.course_models import CourseChapter, CourseLesson
-from app.course_schemas import ChapterCreate, LessonCreate, LessonPatch, OrderUpdate
+from app.course_schemas import ChapterCreate, ChapterPatch, LessonCreate, LessonPatch, OrderUpdate
 from app.database import Base
 from app.models import Question, ResponseType, SkillType, Topic
+from app.notification_models import Notification
+from app.quiz_schemas import QuizWrite
 from app.routers.course import router as course_router
 from app.services import course
+from app.services.quizzes import save_quiz
 
 
 def sqlite_metadata() -> MetaData:
@@ -157,3 +161,46 @@ def test_course_routes_are_registered_with_expected_methods():
         ("/course/chapters/{chapter_id}/lessons/reorder", "PUT"),
     }:
         assert expected in routes
+
+
+def test_course_and_quiz_availability_notifications_are_eligible_and_deduplicated(setup):
+    session, question, lecturer, student, _ = setup
+    inactive = User(email="inactive-course@example.test", password_hash="x", is_active=False)
+    session.add(inactive)
+    session.commit()
+    chapter = course.create_chapter(session, chapter_payload())
+    hidden_lesson = course.create_lesson(session, lesson_payload(chapter.id, question.id))
+    course.publish_lesson(session, hidden_lesson.id, lecturer.id)
+    assert session.scalar(select(Notification.id)) is None
+
+    course.publish_chapter(session, chapter.id, lecturer.id)
+    chapter_notice = session.scalar(select(Notification).where(Notification.kind == "COURSE_CHAPTER_PUBLISHED"))
+    assert chapter_notice is not None and chapter_notice.recipient_user_id == student.id
+    course.update_chapter(session, chapter.id, ChapterPatch(title="Updated sets"))
+    course.unpublish_chapter(session, chapter.id)
+    course.publish_chapter(session, chapter.id, lecturer.id)
+    assert session.query(Notification).filter_by(kind="COURSE_CHAPTER_PUBLISHED").count() == 1
+
+    visible_lesson = course.create_lesson(session, LessonCreate(chapter_id=chapter.id, title="Relations", slug="relations-notify", content="Relations.", position=1))
+    course.publish_lesson(session, visible_lesson.id, lecturer.id)
+    assert session.scalar(select(Notification).where(Notification.kind == "COURSE_LESSON_PUBLISHED")).recipient_user_id == student.id
+
+    draft = save_quiz(session, QuizWrite(title="Notification quiz", status="DRAFT", questions=[{"question_id": question.id, "points": 1}]), actor_user_id=lecturer.id)
+    assert session.query(Notification).filter_by(kind="QUIZ_AVAILABLE").count() == 0
+    save_quiz(session, QuizWrite(title="Notification quiz", status="ACTIVE", questions=[{"question_id": question.id, "points": 1}]), draft.id, lecturer.id)
+    save_quiz(session, QuizWrite(title="Renamed quiz", status="ACTIVE", questions=[{"question_id": question.id, "points": 1}]), draft.id, lecturer.id)
+    quizzes = session.query(Notification).filter_by(kind="QUIZ_AVAILABLE").all()
+    assert len(quizzes) == 1 and quizzes[0].recipient_user_id == student.id
+
+
+def test_course_publish_notification_rolls_back_with_the_content_change(setup, monkeypatch):
+    session, _, lecturer, _, _ = setup
+    chapter = course.create_chapter(session, chapter_payload())
+
+    def conflict():
+        raise IntegrityError("COMMIT", {}, Exception("test rollback"))
+
+    monkeypatch.setattr(session, "commit", conflict)
+    with pytest.raises(HTTPException):
+        course.publish_chapter(session, chapter.id, lecturer.id)
+    assert session.scalar(select(Notification.id)) is None

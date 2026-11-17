@@ -53,7 +53,7 @@ def delete_chapter(chapter_id: Id, session: DB, actor: Manager):
 
 @router.post("/chapters/{chapter_id}/publish", response_model=ChapterRead)
 def publish_chapter(chapter_id: Id, session: DB, actor: Manager):
-    return course.read_chapter(course.publish_chapter(session, chapter_id), include_status=True)
+    return course.read_chapter(course.publish_chapter(session, chapter_id, actor.id), include_status=True)
 
 
 @router.post("/chapters/{chapter_id}/unpublish", response_model=ChapterRead)
@@ -78,7 +78,7 @@ def delete_lesson(lesson_id: Id, session: DB, actor: Manager):
 
 @router.post("/lessons/{lesson_id}/publish", response_model=LessonRead)
 def publish_lesson(lesson_id: Id, session: DB, actor: Manager):
-    return course.read_lesson(course.publish_lesson(session, lesson_id), include_status=True)
+    return course.read_lesson(course.publish_lesson(session, lesson_id, actor.id), include_status=True)
 
 
 @router.post("/lessons/{lesson_id}/unpublish", response_model=LessonRead)

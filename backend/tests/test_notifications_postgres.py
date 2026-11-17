@@ -35,7 +35,12 @@ def test_notification_migration_upgrade_and_downgrade_round_trip():
             assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0027"
             assert connection.execute(text("SELECT to_regclass('notifications')")).scalar() == "notifications"
             assert connection.execute(
-                text("SELECT count(*) FROM pg_constraint WHERE conname = 'uq_notifications_recipient_dedupe'")
+                text(
+                    "SELECT count(*) FROM pg_constraint AS con "
+                    "JOIN pg_namespace AS ns ON ns.oid = con.connamespace "
+                    "WHERE con.conname = 'uq_notifications_recipient_dedupe' "
+                    "AND ns.nspname = current_schema()"
+                )
             ).scalar() == 1
             command.downgrade(config, "0026")
             assert connection.execute(text("SELECT to_regclass('notifications')")).scalar() is None
