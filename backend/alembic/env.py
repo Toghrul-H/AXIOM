@@ -9,6 +9,7 @@ from app.assessment_models import AssessmentConfiguration
 from app.recruitment_models import DemonstratorVacancy
 from app.exam_models import Exam
 from app.practice_sheet_models import PracticeSheet
+from app.study_partner_models import StudyPartnerProfile
 
 target_metadata = Base.metadata
 

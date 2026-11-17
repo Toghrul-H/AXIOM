@@ -1,11 +1,17 @@
 """Staff-authored printable exam compositions and immutable final snapshots."""
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func, literal
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.exam_settings import default_exam_document_settings
+
+
+_DOCUMENT_SETTINGS_SERVER_DEFAULT = literal(
+    '{"header":{"institution_name":"Eötvös Loránd University","course_name":"Discrete Mathematics I","instructor_name":null,"document_date":null,"duration_minutes":null},"layout":{"paper_size":"A4","margins":"normal","question_spacing":"normal","page_numbering":true},"student_fields":{"show_name":true,"show_neptun_code":true,"show_date":true},"questions":{"show_points":true,"answer_space":"medium","numbering_enabled":true,"page_break_before_question_ids":[]}}',
+    type_=String(),
+)
 
 
 class Exam(Base):
@@ -33,7 +39,7 @@ class Exam(Base):
     document_settings: Mapped[dict] = mapped_column(
         JSON,
         default=default_exam_document_settings,
-        server_default=text("'{\"header\":{\"institution_name\":\"Eötvös Loránd University\",\"course_name\":\"Discrete Mathematics I\",\"instructor_name\":null,\"document_date\":null,\"duration_minutes\":null},\"layout\":{\"paper_size\":\"A4\",\"margins\":\"normal\",\"question_spacing\":\"normal\",\"page_numbering\":true},\"student_fields\":{\"show_name\":true,\"show_neptun_code\":true,\"show_date\":true},\"questions\":{\"show_points\":true,\"answer_space\":\"medium\",\"numbering_enabled\":true,\"page_break_before_question_ids\":[]}}'"),
+        server_default=_DOCUMENT_SETTINGS_SERVER_DEFAULT,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -34,7 +34,14 @@ def issue_session(session:Session,user:User,response:Response)->str:
     csrf=token_urlsafe(32)
     settings=get_settings()
     now=datetime.now(timezone.utc)
-    session.execute(delete(AuthSession).where(AuthSession.expires_at<=now))
+    # Let the database evaluate expiry. SQLite returns timezone-naive values
+    # for existing rows, so ORM-side synchronization can otherwise compare
+    # those against this UTC-aware timestamp in Python.
+    session.execute(
+        delete(AuthSession)
+        .where(AuthSession.expires_at <= now)
+        .execution_options(synchronize_session=False)
+    )
     session.add(AuthSession(token_hash=digest(token),user_id=user.id,csrf_token=csrf,
         expires_at=now+timedelta(hours=settings.auth_session_hours)))
     session.commit()
