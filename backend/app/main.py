@@ -57,6 +57,8 @@ from app.routers.study_partner import router as study_partner_router
 app.include_router(study_partner_router)
 from app.routers.course import router as course_router
 app.include_router(course_router)
+from app.routers.notifications import router as notifications_router
+app.include_router(notifications_router)
 
 
 @app.middleware("http")

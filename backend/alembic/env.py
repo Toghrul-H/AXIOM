@@ -11,6 +11,7 @@ from app.exam_models import Exam
 from app.practice_sheet_models import PracticeSheet
 from app.study_partner_models import StudyPartnerProfile
 from app.course_models import CourseChapter
+from app.notification_models import Notification
 
 target_metadata = Base.metadata
 
