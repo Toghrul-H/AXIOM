@@ -100,3 +100,13 @@ def limit_auth(request:Request):
         if len(_failures[key])>=get_settings().auth_requests_per_minute:
             raise HTTPException(429,'Too many sign-in attempts. Try again later',headers={'Retry-After':'60'})
         _failures[key].append(now)
+
+def limit_password_reset(request: Request) -> bool:
+    """Keep public reset throttling indistinguishable from an accepted request."""
+    try:
+        limit_auth(request)
+    except HTTPException as error:
+        if error.status_code == 429:
+            return True
+        raise
+    return False

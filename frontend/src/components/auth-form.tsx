@@ -105,6 +105,11 @@ export function AuthForm({ register = false }: { register?: boolean }) {
                     maxLength={128}
                   />
                 </label>
+                {!register && (
+                  <p className="field-hint">
+                    <Link href="/forgot-password">Forgot password?</Link>
+                  </p>
+                )}
                 {register && (
                   <>
                     <p className="field-hint">

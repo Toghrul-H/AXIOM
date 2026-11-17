@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.config import get_settings
-from app.services.smtp_delivery import send_verification_email, DeliveryUnavailable
+from app.services.smtp_delivery import send_password_reset_email, send_verification_email, DeliveryUnavailable
 from app.services.email_verification import get_verification_delivery
 from app.main import app
 from app.auth_models import User, EmailVerification
@@ -25,6 +25,13 @@ def test_starttls_message_and_configured_link():
     assert str(message['Subject']) == 'Verify your AXIOM account'
     assert 'http://127.0.0.1:3000/verify-email?token=test-token' in message.get_content()
     assert message.get_content_charset() == 'utf-8'
+
+def test_password_reset_uses_the_same_tls_transport_with_reset_link():
+    send_password_reset_email('student@inf.elte.hu', 'private-token')
+    smtp = smtplib.SMTP.return_value.__enter__.return_value
+    message = smtp.send_message.call_args.args[0]
+    assert str(message['Subject']) == 'Reset your AXIOM password'
+    assert 'http://127.0.0.1:3000/reset-password?token=private-token' in message.get_content()
 
 def test_implicit_tls_and_no_plaintext(monkeypatch):
     settings = get_settings()

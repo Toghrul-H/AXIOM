@@ -2,6 +2,7 @@
 
 import os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Barrier
 from uuid import uuid4
@@ -9,6 +10,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -21,6 +23,8 @@ from app.models import Topic
 from app.routers.study_partner import accept_request, create_block, create_request, decline_request, put_my_profile
 from app.study_partner_models import StudyPartnerRequest
 from app.study_partner_schemas import StudyPartnerBlockCreate, StudyPartnerProfileWrite, StudyPartnerRequestCreate
+from app.services.password_reset import _claim_outbox, issue_password_reset, reset_password
+from app.auth_models import PasswordResetOutbox, PasswordResetToken
 
 
 pytestmark = [
@@ -132,6 +136,93 @@ def test_postgres_course_migration_is_present(study_partner_schema):
     finally:
         session.close()
         connection.close()
+
+
+def test_postgres_password_reset_migration_round_trip_and_concurrent_consumption(study_partner_schema):
+    session, connection = schema_session(study_partner_schema)
+    try:
+        config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0026")
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0026"
+        assert connection.execute(text("SELECT to_regclass('password_reset_tokens')")).scalar() == "password_reset_tokens"
+        assert connection.execute(text("SELECT to_regclass('password_reset_outbox')")).scalar() == "password_reset_outbox"
+        command.downgrade(config, "0025")
+        assert connection.execute(text("SELECT to_regclass('password_reset_outbox')")).scalar() is None
+        command.downgrade(config, "0024")
+        assert connection.execute(text("SELECT to_regclass('password_reset_tokens')")).scalar() is None
+        command.upgrade(config, "0026")
+        connection.execute(text(f'SET search_path TO "{study_partner_schema}", public'))
+        connection.commit()
+        user = User(email="reset-race@example.test", password_hash="old", role="STUDENT", email_verified=True)
+        session.add(user)
+        session.commit()
+        cipher = Fernet(Fernet.generate_key())
+        issue_password_reset(session, user, cipher)
+        session.commit()
+        assert session.get(PasswordResetToken, user.id) is not None
+        outbox = session.scalar(
+            select(PasswordResetOutbox).where(PasswordResetOutbox.user_id == user.id)
+        )
+        assert outbox is not None
+        user_id = user.id
+        token = cipher.decrypt(outbox.token_ciphertext.encode("ascii")).decode("ascii")
+    finally:
+        session.close()
+        connection.close()
+
+    barrier = Barrier(2)
+    def consume():
+        worker, worker_connection = schema_session(study_partner_schema)
+        try:
+            barrier.wait(timeout=10)
+            try:
+                reset_password(worker, token, "new-password-42!")
+                return "consumed"
+            except HTTPException as error:
+                return "error", error.status_code
+        finally:
+            worker.close()
+            worker_connection.close()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: consume(), range(2)))
+    assert sorted(outcomes, key=str) == [("error", 400), "consumed"]
+    session, connection = schema_session(study_partner_schema)
+    try:
+        assert session.get(PasswordResetToken, user_id) is None
+    finally:
+        session.close()
+        connection.close()
+
+
+def test_postgres_reset_outbox_claims_work_once_across_workers(study_partner_schema):
+    session, connection = schema_session(study_partner_schema)
+    try:
+        config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0026")
+        user = User(email="outbox-race@example.test", password_hash="old", role="STUDENT", email_verified=True)
+        session.add(user)
+        session.commit()
+        issue_password_reset(session, user, Fernet(Fernet.generate_key()))
+        session.commit()
+    finally:
+        session.close()
+        connection.close()
+
+    barrier = Barrier(2)
+    def claim_once():
+        worker, worker_connection = schema_session(study_partner_schema)
+        try:
+            barrier.wait(timeout=10)
+            return len(_claim_outbox(worker, datetime.now(timezone.utc), 1))
+        finally:
+            worker.close()
+            worker_connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claimed = list(pool.map(lambda _: claim_once(), range(2)))
+    assert sorted(claimed) == [0, 1]
 
 
 def test_postgres_transition_and_block_races_remain_controlled(study_partner_schema):

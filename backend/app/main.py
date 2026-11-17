@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+from threading import Event, Thread
 from typing import Annotated
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -15,8 +17,27 @@ from app.routers.manual_grading import router as manual_grading_router
 from app.routers.learning import router as learning_router
 from app.config import get_settings
 from app.database import get_session
+from app.services.password_reset import PasswordResetOutboxWorker
 
-app = FastAPI(title="DMI Platform API")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    stop = Event()
+    worker = PasswordResetOutboxWorker(stop)
+    thread = Thread(
+        target=worker.run,
+        name="password-reset-outbox",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+
+app = FastAPI(title="DMI Platform API", lifespan=lifespan)
 app.include_router(router)
 app.include_router(metadata_router)
 app.include_router(quiz_router)
@@ -46,7 +67,7 @@ async def private_attempt_responses(request: Request, call_next):
             return JSONResponse(status_code=403, content={'detail':'Untrusted request origin'})
         if request.headers.get('sec-fetch-site') == 'cross-site':
             return JSONResponse(status_code=403, content={'detail':'Cross-site requests are not permitted'})
-        if request.url.path in {'/auth/login','/auth/register','/auth/verify-email','/auth/resend-verification'} and request.headers.get('content-type','').split(';')[0] != 'application/json':
+        if request.url.path in {'/auth/login','/auth/register','/auth/verify-email','/auth/resend-verification','/auth/forgot-password','/auth/reset-password'} and request.headers.get('content-type','').split(';')[0] != 'application/json':
             return JSONResponse(status_code=415, content={'detail':'Use application/json'})
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"

@@ -14,6 +14,7 @@ from app.main import app
 from app.services import brevo_delivery
 from app.services.email_delivery import DeliveryUnavailable
 from app.services.email_verification import get_verification_delivery
+from app.services.password_reset import get_password_reset_delivery
 from test_email_verification import flow, register
 
 @pytest.fixture
@@ -45,6 +46,15 @@ def test_success_and_provider_selection(transport, caplog):
     assert 'http://127.0.0.1:3000' in data['textContent']
     assert not caplog.text
     transport.return_value.close.assert_called_once()
+
+def test_password_reset_uses_brevo_without_provider_url_changes(transport):
+    assert get_password_reset_delivery() is brevo_delivery.send_password_reset_email
+    get_password_reset_delivery()('recipient@inf.elte.hu', 'private-token')
+    args, kwargs = transport.return_value.request.call_args
+    assert args == ('POST', '/v3/smtp/email')
+    data = json.loads(kwargs['body'])
+    assert data['subject'] == 'Reset your AXIOM password'
+    assert '/reset-password?token=private-token' in data['textContent']
 
 @pytest.mark.parametrize('status', [302, 400, 401, 403, 429, 500])
 def test_http_failure_sanitized(transport, caplog, status):

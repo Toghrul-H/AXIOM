@@ -4,7 +4,7 @@ import json
 import logging
 import ssl
 from app.config import get_settings
-from app.services.email_delivery import DeliveryUnavailable, verification_body
+from app.services.email_delivery import DeliveryUnavailable, password_reset_body, verification_body
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ def fail(category: str, status: int | None = None) -> None:
     logger.error('Email delivery failed: provider=brevo status=%s category=%s', status, category)
     raise DeliveryUnavailable('Email delivery unavailable') from None
 
-def send_verification_email(email: str, token: str) -> None:
+def _send_email(email: str, subject: str, body: str) -> None:
     settings = get_settings()
     key = settings.brevo_api_key.get_secret_value()
     if not all([key.strip(), settings.email_from_address, settings.email_from_name.strip(), settings.frontend_base_url]):
@@ -23,8 +23,8 @@ def send_verification_email(email: str, token: str) -> None:
     payload = {
         'sender': {'email': settings.email_from_address, 'name': settings.email_from_name},
         'to': [{'email': email}],
-        'subject': 'Verify your AXIOM account',
-        'textContent': verification_body(settings.frontend_base_url, token),
+        'subject': subject,
+        'textContent': body,
     }
     connection = None
     try:
@@ -49,3 +49,9 @@ def send_verification_email(email: str, token: str) -> None:
     finally:
         if connection is not None:
             connection.close()
+
+def send_verification_email(email: str, token: str) -> None:
+    _send_email(email, 'Verify your AXIOM account', verification_body(get_settings().frontend_base_url, token))
+
+def send_password_reset_email(email: str, token: str) -> None:
+    _send_email(email, 'Reset your AXIOM password', password_reset_body(get_settings().frontend_base_url, token))

@@ -1,15 +1,17 @@
 from typing import Annotated
+from secrets import token_urlsafe
 from fastapi import APIRouter,Depends,HTTPException,Request,Response,Query,Path
 from sqlalchemy import select,delete
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.database import get_session
-from app.auth import COOKIE,passwords,DUMMY_HASH,digest,issue_session,get_current_user,manager_user,revoke_user_sessions,limit_auth
+from app.auth import COOKIE,passwords,DUMMY_HASH,digest,issue_session,get_current_user,manager_user,revoke_user_sessions,limit_auth,limit_password_reset
 from app.auth_models import User,AuthSession
 from app.auth_schemas import Credentials,LoginCredentials,UserRead,AuthRead,RoleChange,StatusChange
-from app.auth_schemas import RegistrationCredentials,VerificationInput,ResendInput
+from app.auth_schemas import RegistrationCredentials,VerificationInput,ResendInput,PasswordResetRequest,PasswordResetInput
 from app.services.email_verification import VerificationDelivery,get_verification_delivery,issue_verification,verify_email
 from app.services.email_delivery import DeliveryUnavailable
+from app.services.password_reset import ResetOutboxUnavailable, eligible_for_reset, get_password_reset_cipher, issue_password_reset, reset_password
 
 router=APIRouter(tags=['Authentication and users'])
 DB=Annotated[Session,Depends(get_session)]
@@ -17,6 +19,9 @@ Current=Annotated[User,Depends(get_current_user)]
 Manager=Annotated[User,Depends(manager_user)]
 Id=Annotated[int,Path(gt=0)]
 Delivery=Annotated[VerificationDelivery,Depends(get_verification_delivery)]
+ResetLimited=Annotated[bool,Depends(limit_password_reset)]
+
+RESET_ACCEPTED={'message':'If an eligible account exists, a password reset request has been accepted.'}
 
 @router.post('/auth/register',response_model=UserRead,status_code=201,dependencies=[Depends(limit_auth)])
 def register(payload:RegistrationCredentials,session:DB,deliver:Delivery):
@@ -50,6 +55,27 @@ def resend(payload:ResendInput,session:DB,deliver:Delivery):
             return {'message':'If this account needs verification, a verification request has been accepted.'}
     session.commit()
     return {'message':'If this account needs verification, a verification request has been accepted.'}
+
+@router.post('/auth/forgot-password',status_code=202)
+def forgot_password(payload:PasswordResetRequest,session:DB,limited:ResetLimited):
+    # Execute equivalent bounded Argon2 work on every externally visible path.
+    # Email delivery is handled only by the durable outbox worker after return.
+    passwords.verify(token_urlsafe(16),DUMMY_HASH)
+    if limited:
+        return RESET_ACCEPTED
+    user=session.scalar(select(User).where(User.email==str(payload.email).lower()).with_for_update())
+    if eligible_for_reset(user):
+        try:
+            issue_password_reset(session,user,get_password_reset_cipher())
+            session.commit()
+        except (ResetOutboxUnavailable, SQLAlchemyError):
+            # Preserve existing work on an unavailable queue without exposing it.
+            session.rollback()
+    return RESET_ACCEPTED
+
+@router.post('/auth/reset-password',status_code=204,dependencies=[Depends(limit_auth)])
+def password_reset(payload:PasswordResetInput,session:DB):
+    reset_password(session,payload.token.get_secret_value(),payload.password.get_secret_value())
 
 @router.post('/auth/login',response_model=AuthRead,dependencies=[Depends(limit_auth)])
 def login(payload:LoginCredentials,session:DB,response:Response,request:Request):

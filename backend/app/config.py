@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     email_from_address: str = ''
     email_from_name: str = 'AXIOM'
     frontend_base_url: str = ''
+    # A persistent Fernet key protects raw reset tokens until delivery. Never
+    # rotate it while messages may remain in the password-reset outbox.
+    password_reset_outbox_encryption_key: SecretStr = SecretStr('')
+    password_reset_outbox_poll_seconds: int = Field(default=5, ge=1, le=60)
+    password_reset_outbox_batch_size: int = Field(default=10, ge=1, le=100)
+    password_reset_outbox_max_attempts: int = Field(default=5, ge=1, le=10)
 
     @field_validator('email_from_address')
     @classmethod

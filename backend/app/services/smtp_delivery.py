@@ -6,7 +6,7 @@ import ssl
 from email.message import EmailMessage
 from email.utils import formataddr
 from app.config import get_settings
-from app.services.email_delivery import DeliveryUnavailable, verification_body
+from app.services.email_delivery import DeliveryUnavailable, password_reset_body, verification_body
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def log_delivery_failure(error: Exception, stage: str) -> None:
     logger.error('Email delivery failed: stage=%s exception=%s message=%s smtp_code=%s errno=%s',
                  stage, kind, message, code, number)
 
-def send_verification_email(email: str, token: str) -> None:
+def _send_email(email: str, subject: str, body: str) -> None:
     settings = get_settings()
     if not all([settings.smtp_host, settings.smtp_username,
                 settings.smtp_password.get_secret_value(), settings.email_from_address,
@@ -53,11 +53,11 @@ def send_verification_email(email: str, token: str) -> None:
     stage = 'message_setup'
     try:
         message = EmailMessage()
-        message['Subject'] = 'Verify your AXIOM account'
+        message['Subject'] = subject
         message['From'] = formataddr((settings.email_from_name, settings.email_from_address))
         message['To'] = email
         message.set_content(
-            verification_body(settings.frontend_base_url, token),
+            body,
             charset='utf-8',
         )
         context = ssl.create_default_context()
@@ -84,3 +84,9 @@ def send_verification_email(email: str, token: str) -> None:
     except (OSError, smtplib.SMTPException, ValueError) as error:
         log_delivery_failure(error, stage)
         raise DeliveryUnavailable('Email delivery unavailable') from None
+
+def send_verification_email(email: str, token: str) -> None:
+    _send_email(email, 'Verify your AXIOM account', verification_body(get_settings().frontend_base_url, token))
+
+def send_password_reset_email(email: str, token: str) -> None:
+    _send_email(email, 'Reset your AXIOM password', password_reset_body(get_settings().frontend_base_url, token))

@@ -15,6 +15,8 @@ async function forward(
           "logout",
           "verify-email",
           "resend-verification",
+          "forgot-password",
+          "reset-password",
         ].includes(action))
   )
     return new Response(null, { status: 404 });

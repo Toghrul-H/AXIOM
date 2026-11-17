@@ -4,7 +4,7 @@ from app.config import get_settings
 from app.database import Base, get_engine
 from app.models import Question  # Register models in migration metadata.
 from app.quiz_models import Quiz
-from app.auth_models import User, AuthSession
+from app.auth_models import User, AuthSession, PasswordResetToken
 from app.assessment_models import AssessmentConfiguration
 from app.recruitment_models import DemonstratorVacancy
 from app.exam_models import Exam

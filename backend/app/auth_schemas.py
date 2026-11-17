@@ -43,6 +43,13 @@ class ResendInput(Schema):
     def normalize_email(cls, value):
         return value.strip().lower() if isinstance(value, str) else value
 
+class PasswordResetRequest(ResendInput):
+    pass
+
+class PasswordResetInput(Schema):
+    token: SecretStr = Field(min_length=43, max_length=43)
+    password: SecretStr = Field(min_length=12, max_length=128)
+
 class UserRead(Schema):
     id:int
     email:str
