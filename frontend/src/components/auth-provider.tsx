@@ -23,15 +23,29 @@ export function useAuth() {
   return value;
 }
 
+export function authRouteAccess(path: string) {
+  const verificationPage = path === "/verify-email" || path === "/check-email";
+  const recoveryPage =
+    path === "/forgot-password" || path === "/reset-password";
+  return {
+    verificationPage,
+    publicPage:
+      path === "/login" ||
+      path === "/register" ||
+      verificationPage ||
+      recoveryPage,
+    redirectAuthenticated: path === "/login" || path === "/register",
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const path = usePathname();
   const router = useRouter();
-  const verificationPage = path === "/verify-email" || path === "/check-email";
-  const publicPage =
-    path === "/login" || path === "/register" || verificationPage;
+  const { verificationPage, publicPage, redirectAuthenticated } =
+    authRouteAccess(path);
   useEffect(() => {
     let alive = true;
     const expire = () => {
@@ -79,9 +93,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading || error) return;
     if (!user && !publicPage) router.replace("/login");
-    if (user && ((publicPage && !verificationPage) || path === "/"))
+    if (user && (redirectAuthenticated || path === "/"))
       router.replace(homeFor(user));
-  }, [loading, error, user, publicPage, verificationPage, path, router]);
+  }, [loading, error, user, publicPage, redirectAuthenticated, path, router]);
   const signIn = (state: AuthState) => {
     setAuth(state);
     setUser(state.user);

@@ -215,3 +215,28 @@ test("login and recovery UI provide safe password validation affordances", () =>
   assert.match(recoveryUi, /autoComplete="new-password"/);
   assert.match(recoveryUi, /role="alert"/);
 });
+
+test("password-recovery routes remain public while protected routes remain guarded", () => {
+  const provider = load("src/components/auth-provider.tsx", {
+    react: {
+      createContext: () => ({}),
+      useContext: () => null,
+      useEffect: () => {},
+      useState: () => [null, () => {}],
+    },
+    "react/jsx-runtime": jsx,
+    "next/link": { default: "a" },
+    "next/navigation": { usePathname: () => "/", useRouter: () => ({}) },
+    "@/lib/auth": {},
+    "./app-shell": { AppShell: "app-shell" },
+  });
+
+  for (const path of ["/forgot-password", "/reset-password"]) {
+    const access = provider.authRouteAccess(path);
+    assert.equal(access.publicPage, true);
+    assert.equal(access.redirectAuthenticated, false);
+  }
+  assert.equal(provider.authRouteAccess("/teacher").publicPage, false);
+  assert.equal(provider.authRouteAccess("/login").redirectAuthenticated, true);
+  assert.equal(provider.authRouteAccess("/verify-email").publicPage, true);
+});
