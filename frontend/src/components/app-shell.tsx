@@ -99,6 +99,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/student/practice", label: "Practice", icon: Shapes },
         { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
         { href: "/student/history", label: "History", icon: BookOpen },
+        ...(user?.is_active
+          ? [
+              {
+                href: "/student/study-partner",
+                label: "Study Partner",
+                icon: UserRound,
+              },
+            ]
+          : []),
         {
           href: "/student/demonstrator-opportunities",
           label: "Demonstrator Opportunities",
@@ -144,6 +153,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (path.startsWith("/teacher/practice-sheets")
       ? "Practice Sheets"
       : undefined) ??
+    (path.startsWith("/student/study-partner") ? "Study Partner" : undefined) ??
     (path.startsWith("/teacher/grading/") ? "Manual Grading" : undefined) ??
     links.find((item) => item.href === path)?.label ??
     futureTools.find((item) => path === `/teacher/tools/${item.slug}`)?.title ??
