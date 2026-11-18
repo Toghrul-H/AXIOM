@@ -11,6 +11,7 @@ CourseTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 CourseSlug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", min_length=1, max_length=120)]
 LessonContent = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50000)]
 CourseStatus = Literal["draft", "published"]
+MaterialDescription = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)]
 
 
 class QuestionLinkWrite(Schema):
@@ -77,6 +78,60 @@ class OrderUpdate(Schema):
         return self
 
 
+class MaterialCreate(Schema):
+    title: CourseTitle
+    description: MaterialDescription | None = None
+    chapter_id: PositiveId | None = None
+    lesson_id: PositiveId | None = None
+    position: int = Field(ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def exactly_one_parent(self) -> Self:
+        if (self.chapter_id is None) == (self.lesson_id is None):
+            raise ValueError("A material must belong to exactly one chapter or lesson.")
+        return self
+
+
+class MaterialPatch(Schema):
+    title: CourseTitle | None = None
+    description: MaterialDescription | None = None
+    position: int | None = Field(default=None, ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def nonempty(self) -> Self:
+        if not self.model_fields_set or any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Provide non-null material fields to update.")
+        return self
+
+
+class MaterialRead(Schema):
+    id: int
+    chapter_id: int | None
+    lesson_id: int | None
+    title: str
+    description: str | None
+    filename: str | None
+    media_type: str | None
+    size_bytes: int | None
+    sha256: str | None
+    storage_ready: bool
+    status: CourseStatus
+    position: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class MaterialPublicRead(Schema):
+    id: int
+    title: str
+    description: str | None
+    filename: str
+    media_type: str
+    size_bytes: int
+    position: int
+
+
 class QuestionLinkRead(Schema):
     question_id: int
     position: int
@@ -93,6 +148,7 @@ class LessonRead(Schema):
     created_at: datetime
     updated_at: datetime
     questions: list[QuestionLinkRead]
+    materials: list[MaterialPublicRead]
 
 
 class ChapterRead(Schema):
@@ -104,3 +160,4 @@ class ChapterRead(Schema):
     created_at: datetime
     updated_at: datetime
     lessons: list[LessonRead]
+    materials: list[MaterialPublicRead]

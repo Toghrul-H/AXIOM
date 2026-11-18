@@ -148,6 +148,7 @@ test("notification presentation includes all supported event families", () => {
     "RECRUITMENT_APPLICATION_",
     "COURSE_CHAPTER_PUBLISHED",
     "COURSE_LESSON_PUBLISHED",
+    "COURSE_MATERIAL_PUBLISHED",
     "QUIZ_AVAILABLE",
     "MANUAL_GRADING_COMPLETED",
   ]) {

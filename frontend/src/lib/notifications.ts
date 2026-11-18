@@ -112,6 +112,10 @@ const copy: Record<string, { title: string; body: string }> = {
     title: "New course lesson",
     body: "A new course lesson has been published.",
   },
+  COURSE_MATERIAL_PUBLISHED: {
+    title: "New course material",
+    body: "New course material is available to view or download.",
+  },
   MANUAL_GRADING_COMPLETED: {
     title: "Manual grading completed",
     body: "Your graded submission is now available.",

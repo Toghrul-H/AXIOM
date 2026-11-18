@@ -2,12 +2,13 @@
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
-from app.course_models import CourseChapter, CourseLesson, CourseLessonQuestion
-from app.course_schemas import ChapterCreate, ChapterPatch, LessonCreate, LessonPatch
+from app.course_models import CourseChapter, CourseLesson, CourseLessonQuestion, CourseMaterial
+from app.course_schemas import ChapterCreate, ChapterPatch, LessonCreate, LessonPatch, MaterialCreate, MaterialPatch
 from app.models import Question
+from app.services.course_material_storage import StorageOperationError, VerifiedMaterialFile
 from app.services.notifications import create_notifications, eligible_student_ids
 
 
@@ -47,6 +48,16 @@ def _lesson(session: Session, lesson_id: int, *, lock: bool = False) -> CourseLe
     return lesson
 
 
+def _material(session: Session, material_id: int, *, lock: bool = False) -> CourseMaterial:
+    statement = select(CourseMaterial).where(CourseMaterial.id == material_id)
+    if lock:
+        statement = statement.with_for_update()
+    material = session.scalar(statement)
+    if material is None:
+        raise HTTPException(404, "Material not found")
+    return material
+
+
 def _questions(session: Session, ids: list[int]) -> None:
     if not ids:
         return
@@ -62,12 +73,24 @@ def _replace_questions(session: Session, lesson: CourseLesson, ids: list[int]) -
     lesson.questions = [CourseLessonQuestion(question_id=question_id, position=index) for index, question_id in enumerate(ids)]
 
 
-def read_lesson(lesson: CourseLesson, *, include_status: bool) -> dict:
+def _read_public_material(material: CourseMaterial) -> dict:
+    return {
+        "id": material.id, "title": material.title, "description": material.description,
+        "filename": material.original_filename, "media_type": material.media_type,
+        "size_bytes": material.size_bytes, "position": material.position,
+    }
+
+
+def read_lesson(lesson: CourseLesson, *, include_status: bool, published_only: bool = False) -> dict:
     result = {
         "id": lesson.id, "chapter_id": lesson.chapter_id, "title": lesson.title, "slug": lesson.slug,
         "content": lesson.content, "position": lesson.position, "created_at": lesson.created_at,
         "updated_at": lesson.updated_at,
         "questions": [{"question_id": item.question_id, "position": item.position} for item in lesson.questions],
+        "materials": [
+            _read_public_material(item) for item in lesson.materials
+            if _storage_ready(item) and (not published_only or item.status == "published")
+        ],
     }
     if include_status:
         result["status"] = lesson.status
@@ -79,7 +102,11 @@ def read_chapter(chapter: CourseChapter, *, include_status: bool, published_only
     result = {
         "id": chapter.id, "title": chapter.title, "slug": chapter.slug, "position": chapter.position,
         "created_at": chapter.created_at, "updated_at": chapter.updated_at,
-        "lessons": [read_lesson(item, include_status=include_status) for item in lessons],
+        "lessons": [read_lesson(item, include_status=include_status, published_only=published_only) for item in lessons],
+        "materials": [
+            _read_public_material(item) for item in chapter.materials
+            if _storage_ready(item) and (not published_only or item.status == "published")
+        ],
     }
     if include_status:
         result["status"] = chapter.status
@@ -87,7 +114,11 @@ def read_chapter(chapter: CourseChapter, *, include_status: bool, published_only
 
 
 def list_chapters(session: Session, *, published_only: bool) -> list[dict]:
-    statement = select(CourseChapter).options(selectinload(CourseChapter.lessons).selectinload(CourseLesson.questions))
+    statement = select(CourseChapter).options(
+        selectinload(CourseChapter.materials),
+        selectinload(CourseChapter.lessons).selectinload(CourseLesson.questions),
+        selectinload(CourseChapter.lessons).selectinload(CourseLesson.materials),
+    )
     if published_only:
         statement = statement.where(CourseChapter.status == "published")
     chapters = session.scalars(statement.order_by(CourseChapter.position, CourseChapter.id)).all()
@@ -98,12 +129,211 @@ def published_lesson(session: Session, lesson_id: int) -> dict:
     statement = (
         select(CourseLesson).join(CourseChapter)
         .where(CourseLesson.id == lesson_id, CourseLesson.status == "published", CourseChapter.status == "published")
-        .options(selectinload(CourseLesson.questions))
+        .options(selectinload(CourseLesson.questions), selectinload(CourseLesson.materials))
     )
     lesson = session.scalar(statement)
     if lesson is None:
         raise HTTPException(404, "Lesson not found")
-    return read_lesson(lesson, include_status=False)
+    return read_lesson(lesson, include_status=False, published_only=True)
+
+
+def _storage_ready(material: CourseMaterial) -> bool:
+    values = (material.storage_key, material.original_filename, material.media_type, material.size_bytes, material.sha256)
+    return all(value is not None for value in values)
+
+
+def read_material(material: CourseMaterial) -> dict:
+    return {
+        "id": material.id,
+        "chapter_id": material.chapter_id,
+        "lesson_id": material.lesson_id,
+        "title": material.title,
+        "description": material.description,
+        "filename": material.original_filename,
+        "media_type": material.media_type,
+        "size_bytes": material.size_bytes,
+        "sha256": material.sha256,
+        "storage_ready": _storage_ready(material),
+        "status": material.status,
+        "position": material.position,
+        "created_by_id": material.created_by_id,
+        "created_at": material.created_at,
+        "updated_at": material.updated_at,
+    }
+
+
+def list_materials(session: Session) -> list[dict]:
+    materials = session.scalars(
+        select(CourseMaterial).order_by(CourseMaterial.chapter_id, CourseMaterial.lesson_id, CourseMaterial.position, CourseMaterial.id)
+    ).all()
+    return [read_material(material) for material in materials]
+
+
+def create_material(session: Session, payload: MaterialCreate, actor_user_id: int) -> CourseMaterial:
+    values = payload.model_dump()
+    if payload.chapter_id is not None:
+        _chapter(session, payload.chapter_id)
+    else:
+        _lesson(session, payload.lesson_id or 0)
+    material = CourseMaterial(**values, created_by_id=actor_user_id)
+    session.add(material)
+    _commit(session)
+    session.refresh(material)
+    return material
+
+
+def update_material(session: Session, material_id: int, payload: MaterialPatch) -> CourseMaterial:
+    material = _material(session, material_id)
+    for name, value in payload.model_dump(exclude_unset=True).items():
+        setattr(material, name, value)
+    _commit(session)
+    session.refresh(material)
+    return material
+
+
+def _material_parent_is_published(session: Session, material: CourseMaterial) -> bool:
+    if material.chapter_id is not None:
+        return _chapter(session, material.chapter_id, lock=True).status == "published"
+    lesson = _lesson(session, material.lesson_id or 0, lock=True)
+    return lesson.status == "published" and _chapter(session, lesson.chapter_id, lock=True).status == "published"
+
+
+def material_visible_to_student(session: Session, material_id: int) -> CourseMaterial:
+    """Return only a material whose own and containing content are published."""
+    material = _material(session, material_id)
+    if material.status != "published" or not _storage_ready(material):
+        raise HTTPException(404, "Material not found")
+    if material.chapter_id is not None:
+        visible = _chapter(session, material.chapter_id).status == "published"
+    else:
+        lesson = _lesson(session, material.lesson_id or 0)
+        visible = lesson.status == "published" and _chapter(session, lesson.chapter_id).status == "published"
+    if not visible:
+        raise HTTPException(404, "Material not found")
+    return material
+
+
+def managed_material(session: Session, material_id: int) -> CourseMaterial:
+    return _material(session, material_id)
+
+
+def upload_material_file(session: Session, material_id: int, file: VerifiedMaterialFile, storage) -> CourseMaterial:
+    """Write one verified object and atomically attach its metadata or remove it."""
+    material = _material(session, material_id, lock=True)
+    if material.status != "draft":
+        raise HTTPException(409, "Published materials cannot be replaced")
+    if _storage_ready(material):
+        raise HTTPException(409, "A material file is already attached")
+    key = storage.new_key()
+    try:
+        # Google Drive assigns an opaque file ID after creation. It remains a
+        # private implementation detail and is persisted only after success.
+        stored_key = storage.put(key, file) or key
+    except StorageOperationError:
+        # A timeout may occur after a remote write; best-effort cleanup keeps
+        # an unreferenced private object from accumulating.
+        try:
+            storage.delete(key)
+        except StorageOperationError:
+            pass
+        raise HTTPException(502, "Material storage is temporarily unavailable") from None
+    material.storage_key = stored_key
+    material.original_filename = file.filename
+    material.media_type = file.media_type
+    material.size_bytes = file.size_bytes
+    material.sha256 = file.sha256
+    try:
+        _commit(session)
+    except HTTPException:
+        try:
+            storage.delete(stored_key)
+        except StorageOperationError:
+            pass  # The object is inaccessible without a committed database reference.
+        raise
+    session.refresh(material)
+    return material
+
+
+def publish_material(session: Session, material_id: int, actor_user_id: int | None = None) -> CourseMaterial:
+    material = _material(session, material_id, lock=True)
+    if not _storage_ready(material):
+        raise HTTPException(409, "Upload a verified material file before publishing")
+    if not _material_parent_is_published(session, material):
+        raise HTTPException(409, "Publish the containing course content before publishing its material")
+    newly_published = material.status != "published"
+    material.status = "published"
+    if newly_published:
+        if material.chapter_id is not None:
+            link = "/student/course"
+        else:
+            link = f"/student/course?lesson={material.lesson_id}"
+        create_notifications(
+            session,
+            recipient_user_ids=eligible_student_ids(session),
+            actor_user_id=actor_user_id,
+            kind="COURSE_MATERIAL_PUBLISHED",
+            dedupe_key=f"course-material:{material.id}:published",
+            payload={"title": "New course material", "resource_id": material.id},
+            link=link,
+        )
+    _commit(session)
+    session.refresh(material)
+    return material
+
+
+def unpublish_material(session: Session, material_id: int) -> CourseMaterial:
+    material = _material(session, material_id)
+    material.status = "draft"
+    _commit(session)
+    session.refresh(material)
+    return material
+
+
+def reorder_materials(session: Session, *, chapter_id: int | None, lesson_id: int | None, ids: list[int]) -> None:
+    if (chapter_id is None) == (lesson_id is None):
+        raise HTTPException(422, "Provide exactly one material container")
+    if chapter_id is not None:
+        _chapter(session, chapter_id, lock=True)
+        condition = CourseMaterial.chapter_id == chapter_id
+    else:
+        _lesson(session, lesson_id or 0, lock=True)
+        condition = CourseMaterial.lesson_id == lesson_id
+    current = session.scalars(select(CourseMaterial).where(condition).order_by(CourseMaterial.id).with_for_update()).all()
+    if {item.id for item in current} != set(ids):
+        raise HTTPException(422, "Material ordering must include every material in the container exactly once")
+    offset = max(item.position for item in current) + len(current) + 1
+    session.execute(update(CourseMaterial).where(condition).values(position=CourseMaterial.position + offset))
+    session.expire_all()
+    for position, material_id in enumerate(ids):
+        session.get(CourseMaterial, material_id).position = position
+    _commit(session)
+
+
+def delete_material(session: Session, material_id: int, storage=None) -> None:
+    """Delete an owned remote file before its metadata, with retry reconciliation."""
+    material = _material(session, material_id, lock=True)
+    storage_key = material.storage_key
+    if storage_key:
+        if storage is None:
+            session.rollback()
+            raise HTTPException(503, "Material storage is unavailable")
+        try:
+            storage.delete(storage_key)
+        except StorageOperationError:
+            session.rollback()
+            raise HTTPException(502, "Material storage is temporarily unavailable") from None
+    session.delete(material)
+    try:
+        _commit(session)
+    except HTTPException:
+        # The private object may already be deleted. The row remains after the
+        # rollback; retrying this operation treats a missing object as cleaned up.
+        raise HTTPException(503, "Material deletion could not be completed; retry it") from None
+    except SQLAlchemyError:
+        session.rollback()
+        # The private object may already be deleted. The row remains after the
+        # rollback; retrying this operation treats a missing object as cleaned up.
+        raise HTTPException(503, "Material deletion could not be completed; retry it") from None
 
 
 def create_chapter(session: Session, payload: ChapterCreate) -> CourseChapter:

@@ -159,6 +159,13 @@ def test_course_routes_are_registered_with_expected_methods():
         ("/course/chapters/reorder", "PUT"), ("/course/lessons", "POST"),
         ("/course/lessons/{lesson_id}", "PATCH"),
         ("/course/chapters/{chapter_id}/lessons/reorder", "PUT"),
+        ("/course/manage/materials", "GET"), ("/course/materials", "POST"),
+        ("/course/materials/{material_id}", "PATCH"),
+        ("/course/materials/{material_id}/publish", "POST"),
+        ("/course/materials/{material_id}/file", "PUT"),
+        ("/course/materials/{material_id}/download", "GET"),
+        ("/course/materials/{material_id}/preview", "GET"),
+        ("/course/chapters/{chapter_id}/materials/reorder", "PUT"),
     }:
         assert expected in routes
 

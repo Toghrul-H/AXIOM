@@ -19,7 +19,7 @@ hosting configuration and availability were not inspected during this handover.
 - **Frontend:** https://axiom-orcin-xi.vercel.app/
 - **Backend:** https://axiom-api-te6o.onrender.com/
 - **Database:** PostgreSQL hosted on Neon.
-- **Database migrations:** Source head is `0012`; the owner reports this as the latest verified deployed revision.
+- **Database migrations:** Local working-tree head is `0028`; M20 Course Materials has not been applied or deployed to production. Verify the live revision through the approved release process before any migration.
 - **Historical backend verification:** 242 tests passed, including PostgreSQL integration tests (owner-reported; not rerun for this documentation review).
 
 Implemented functionality includes structured question management, student quizzes,
@@ -40,6 +40,7 @@ ELTE production system.
 - **Manual grading:** Staff review and grading of supported written responses.
 - **Assessment management:** Assessment configurations, policies, events and room management.
 - **LaTeX/PDF generation:** Assessment document preview and PDF generation.
+- **Course Materials (local M20 release candidate):** private Google Drive-backed staff upload and authorized student delivery for supported course files; Google OAuth publication is verified, but production release remains blocked pending Render secret configuration and migration `0028`.
 
 ### User roles
 
@@ -63,6 +64,7 @@ type. Written responses require staff review where manual grading is applicable.
 - [Developer handover](docs/developer-handover.md): architecture, setup and maintenance.
 - [Production deployment](docs/production-deployment.md): environment, GHCR, migrations and rollback.
 - [Final project handover](docs/final-handover.md): evidence, limitations and ownership decisions.
+- [M20 Course Materials release status](docs/milestone-20-course-materials.md): verified local evidence and release gates.
 
 Assessment Documents provides seven templates, a live Draft Preview and real PDF
 downloads. Preview includes unsaved edits; Download PDF requires relevant sections
@@ -170,7 +172,8 @@ See [backend instructions](backend/README.md) and [frontend instructions](fronte
 
 ### Migrations and local accounts
 
-Apply migrations before running the application; current head is `0012`. Tables
+Apply migrations before running the application; the local working-tree head is
+`0028`. Tables
 are not created automatically at startup. Inspect schema state with
 `python -m alembic current` and `python -m alembic check` using the backend environment.
 
@@ -244,7 +247,7 @@ Potential future improvements include:
 
 - Practice Sheet Generator and Question Generator.
 - Exam Builder, solution/variant generation and general LaTeX/PDF tools beyond the seven assessment documents.
-- Advanced mathematical visualizations and course material tools.
+- Further Course Materials lifecycle/operational hardening.
 - Additional operational monitoring and production hardening.
 - Further usability improvements based on lecturer and student feedback.
 

@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     password_reset_outbox_poll_seconds: int = Field(default=5, ge=1, le=60)
     password_reset_outbox_batch_size: int = Field(default=10, ge=1, le=100)
     password_reset_outbox_max_attempts: int = Field(default=5, ge=1, le=10)
+    # Optional private Google Drive storage for course-material uploads. The
+    # provider remains disabled until explicitly configured.
+    materials_storage_provider: Literal['disabled', 'google_drive'] = 'disabled'
+    materials_google_drive_folder_id: str = ''
+    materials_google_drive_token_file: str = ''
+    materials_google_drive_token_json: SecretStr = SecretStr('')
+    materials_max_upload_bytes: int = Field(default=25_000_000, ge=1_024, le=100_000_000)
 
     @field_validator('email_from_address')
     @classmethod
@@ -76,6 +83,13 @@ class Settings(BaseSettings):
             or (url.scheme == 'http' and url.hostname not in {'localhost', '127.0.0.1', '::1'})):
             raise ValueError('Use an HTTPS frontend origin, or local HTTP origin')
         return value.rstrip('/')
+
+    @field_validator('materials_google_drive_folder_id')
+    @classmethod
+    def validate_materials_google_drive_folder_id(cls, value):
+        if value and not re.fullmatch(r'[A-Za-z0-9_-]{10,200}', value):
+            raise ValueError('MATERIALS_GOOGLE_DRIVE_FOLDER_ID must be a Drive file ID')
+        return value
 
     @field_validator('database_schema')
     @classmethod

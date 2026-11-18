@@ -14,11 +14,11 @@ async function forward(
   const { parts = [] } = await context.params;
   const suffix = parts.join("/");
   const allowed: Record<string, RegExp> = {
-    GET: /^(?:chapters|manage\/chapters|lessons\/[1-9][0-9]*)$/,
-    POST: /^(?:chapters|lessons|chapters\/[1-9][0-9]*\/(?:publish|unpublish)|lessons\/[1-9][0-9]*\/(?:publish|unpublish))$/,
-    PATCH: /^(?:chapters|lessons)\/[1-9][0-9]*$/,
-    PUT: /^(?:chapters\/reorder|chapters\/[1-9][0-9]*\/lessons\/reorder)$/,
-    DELETE: /^(?:chapters|lessons)\/[1-9][0-9]*$/,
+    GET: /^(?:chapters|manage\/(?:chapters|materials)|lessons\/[1-9][0-9]*|materials\/[1-9][0-9]*\/(?:download|preview))$/,
+    POST: /^(?:chapters|lessons|materials|chapters\/[1-9][0-9]*\/(?:publish|unpublish)|lessons\/[1-9][0-9]*\/(?:publish|unpublish)|materials\/[1-9][0-9]*\/(?:publish|unpublish))$/,
+    PATCH: /^(?:chapters|lessons|materials)\/[1-9][0-9]*$/,
+    PUT: /^(?:chapters\/reorder|chapters\/[1-9][0-9]*\/(?:lessons|materials)\/reorder|lessons\/[1-9][0-9]*\/materials\/reorder|materials\/[1-9][0-9]*\/file)$/,
+    DELETE: /^(?:chapters|lessons|materials)\/[1-9][0-9]*$/,
   };
   if (!allowed[request.method]?.test(suffix))
     return new Response(null, { status: 404 });
@@ -31,18 +31,23 @@ async function forward(
     "origin",
     "sec-fetch-site",
     "content-type",
+    "x-material-filename",
   ]) {
     const value = request.headers.get(key);
     if (value) headers.set(key, value);
   }
   try {
+    const binaryUpload =
+      request.method === "PUT" && /^materials\/[1-9][0-9]*\/file$/.test(suffix);
     const response = await fetch(
       `${base.replace(/\/$/, "")}/course/${suffix}${request.nextUrl.search}`,
       {
         method: request.method,
         headers,
         body: ["POST", "PATCH", "PUT"].includes(request.method)
-          ? await request.text()
+          ? binaryUpload
+            ? await request.arrayBuffer()
+            : await request.text()
           : undefined,
         cache: "no-store",
         redirect: "manual",
@@ -57,15 +62,20 @@ async function forward(
           headers: { "Cache-Control": "no-store", Vary: "Cookie" },
         },
       );
+    const responseHeaders = new Headers({
+      "Content-Type":
+        response.headers.get("content-type") ?? "application/json",
+      "Cache-Control": "no-store",
+      Vary: "Cookie",
+      "X-Content-Type-Options": "nosniff",
+    });
+    for (const key of ["content-disposition", "content-length"]) {
+      const value = response.headers.get(key);
+      if (value) responseHeaders.set(key, value);
+    }
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        "Content-Type":
-          response.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-        Vary: "Cookie",
-        "X-Content-Type-Options": "nosniff",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return unavailable();

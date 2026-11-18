@@ -18,9 +18,11 @@ import {
   courseApi,
   type CourseChapter,
   type CourseLesson,
+  type CourseMaterial,
   type LessonWrite,
 } from "@/lib/course";
 import { questionsApi, type Question } from "@/lib/questions";
+import { MaterialManager, PublicMaterials } from "./course-materials";
 
 type Props = { mode: "student" | "manager" };
 const blankChapter = (position: number) => ({ title: "", slug: "", position });
@@ -49,6 +51,7 @@ function Failure({ error, retry }: { error: string; retry: () => void }) {
 export function CourseWorkspace({ mode }: Props) {
   const [chapters, setChapters] = useState<CourseChapter[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [materials, setMaterials] = useState<CourseMaterial[]>([]);
   const [selectedLesson, setSelectedLesson] = useState<CourseLesson | null>(
     null,
   );
@@ -64,18 +67,20 @@ export function CourseWorkspace({ mode }: Props) {
       setLoading(true);
       setError("");
       try {
-        const [data, page] =
+        const [data, page, materialData] =
           mode === "manager"
             ? await Promise.all([
                 courseApi.managedChapters(),
                 questionsApi.list(0, 100, undefined, { is_active: "true" }),
+                courseApi.managedMaterials(),
               ])
             : await courseApi
                 .publishedChapters()
-                .then((items) => [items, null] as const);
+                .then((items) => [items, null, []] as const);
         if (!alive) return;
         setChapters(data);
         setQuestions(page?.items ?? []);
+        setMaterials([...materialData]);
         setSelectedLesson(
           (current) =>
             (current &&
@@ -112,7 +117,12 @@ export function CourseWorkspace({ mode }: Props) {
       select={setSelectedLesson}
     />
   ) : (
-    <CourseManager chapters={chapters} questions={questions} reload={reload} />
+    <CourseManager
+      chapters={chapters}
+      questions={questions}
+      materials={materials}
+      reload={reload}
+    />
   );
 }
 
@@ -151,6 +161,10 @@ function StudentCourse({
               </ul>
             </section>
           )}
+          <PublicMaterials
+            materials={selected.materials}
+            label={selected.title}
+          />
         </div>
       </section>
     );
@@ -187,6 +201,10 @@ function StudentCourse({
           {chapters.map((chapter) => (
             <article className="panel course-chapter" key={chapter.id}>
               <h2>{chapter.title}</h2>
+              <PublicMaterials
+                materials={chapter.materials}
+                label={chapter.title}
+              />
               {chapter.lessons.length === 0 ? (
                 <p className="muted">
                   Lessons will appear here when published.
@@ -217,17 +235,23 @@ function StudentCourse({
 function CourseManager({
   chapters,
   questions,
+  materials,
   reload,
 }: {
   chapters: CourseChapter[];
   questions: Question[];
+  materials: CourseMaterial[];
   reload: () => void;
 }) {
   const [chapterDraft, setChapterDraft] = useState(blankChapter(0));
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const run = async (action: () => Promise<unknown>, success: string) => {
+  const run = async (
+    action: () => Promise<unknown>,
+    success: string,
+    reloadOnError = false,
+  ) => {
     if (busy) return;
     setBusy(true);
     setError("");
@@ -239,6 +263,7 @@ function CourseManager({
       setError(
         reason instanceof Error ? reason.message : "Course update failed.",
       );
+      if (reloadOnError) reload();
     } finally {
       setBusy(false);
     }
@@ -324,6 +349,7 @@ function CourseManager({
               key={chapter.id}
               chapter={chapter}
               questions={questions}
+              materials={materials}
               busy={busy}
               onRun={run}
               moveUp={() => reorder(-1, chapter)}
@@ -341,6 +367,7 @@ function CourseManager({
 function ChapterEditor({
   chapter,
   questions,
+  materials,
   busy,
   onRun,
   moveUp,
@@ -350,8 +377,13 @@ function ChapterEditor({
 }: {
   chapter: CourseChapter;
   questions: Question[];
+  materials: CourseMaterial[];
   busy: boolean;
-  onRun: (action: () => Promise<unknown>, success: string) => Promise<void>;
+  onRun: (
+    action: () => Promise<unknown>,
+    success: string,
+    reloadOnError?: boolean,
+  ) => Promise<void>;
   moveUp: () => void;
   moveDown: () => void;
   first: boolean;
@@ -477,6 +509,16 @@ function ChapterEditor({
           Delete
         </button>
       </div>
+      <MaterialManager
+        parent={{
+          chapterId: chapter.id,
+          label: chapter.title,
+          published: chapter.status === "published",
+        }}
+        materials={materials.filter((item) => item.chapter_id === chapter.id)}
+        busy={busy}
+        onRun={onRun}
+      />
       <div className="course-lessons">
         {chapter.lessons.map((lesson, index) => (
           <LessonEditor
@@ -484,6 +526,7 @@ function ChapterEditor({
             lesson={lesson}
             chapter={chapter}
             questions={questions}
+            materials={materials.filter((item) => item.lesson_id === lesson.id)}
             busy={busy}
             onRun={onRun}
             index={index}
@@ -547,6 +590,7 @@ function LessonEditor({
   lesson,
   chapter,
   questions,
+  materials,
   busy,
   onRun,
   index,
@@ -554,8 +598,13 @@ function LessonEditor({
   lesson: CourseLesson;
   chapter: CourseChapter;
   questions: Question[];
+  materials: CourseMaterial[];
   busy: boolean;
-  onRun: (action: () => Promise<unknown>, success: string) => Promise<void>;
+  onRun: (
+    action: () => Promise<unknown>,
+    success: string,
+    reloadOnError?: boolean,
+  ) => Promise<void>;
   index: number;
 }) {
   const [draft, setDraft] = useState({
@@ -686,6 +735,17 @@ function LessonEditor({
           </button>
         </div>
       </form>
+      <MaterialManager
+        parent={{
+          lessonId: lesson.id,
+          label: lesson.title,
+          published:
+            chapter.status === "published" && lesson.status === "published",
+        }}
+        materials={materials}
+        busy={busy}
+        onRun={onRun}
+      />
     </details>
   );
 }

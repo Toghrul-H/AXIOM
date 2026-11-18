@@ -8,6 +8,7 @@ const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const proxySource = source("../src/app/api/course/[[...parts]]/route.ts");
 const client = source("../src/lib/course.ts");
 const workspace = source("../src/components/course-workspace.tsx");
+const materialUi = source("../src/components/course-materials.tsx");
 const shell = source("../src/components/app-shell.tsx");
 const auth = source("../src/components/auth-provider.tsx");
 
@@ -140,6 +141,42 @@ test("course proxy forwards authentication and only allowlisted paths", async ()
   ]);
 });
 
+test("course proxy preserves raw upload bytes and private download headers", async () => {
+  let uploadBody;
+  const handler = route(async (_url, init) => {
+    if (init.method === "PUT")
+      uploadBody = new Uint8Array(await new Response(init.body).arrayBuffer());
+    return new Response("pdf-bytes", {
+      headers: {
+        "content-type": "application/pdf",
+        "content-disposition": 'attachment; filename="notes.pdf"',
+        "content-length": "9",
+      },
+    });
+  });
+  const upload = request(
+    "/materials/9/file",
+    "PUT",
+    new Uint8Array([0, 255, 1]),
+  );
+  upload.headers.set("content-type", "application/pdf");
+  upload.headers.set("x-material-filename", "notes.pdf");
+  assert.equal(
+    (await handler.PUT(upload, context(["materials", "9", "file"]))).status,
+    200,
+  );
+  assert.deepEqual([...uploadBody], [0, 255, 1]);
+  const download = await handler.GET(
+    request("/materials/9/download"),
+    context(["materials", "9", "download"]),
+  );
+  assert.equal(
+    download.headers.get("content-disposition"),
+    'attachment; filename="notes.pdf"',
+  );
+  assert.equal(download.headers.get("cache-control"), "no-store");
+});
+
 test("course UI separates student reading from staff management", () => {
   for (const expected of [
     "No published lessons yet",
@@ -152,6 +189,9 @@ test("course UI separates student reading from staff management", () => {
   ])
     assert.match(workspace, new RegExp(expected));
   assert.match(workspace, /MathText/);
+  assert.match(materialUi, /Upload draft material/);
+  assert.match(materialUi, /Preview/);
+  assert.match(client, /X-Material-Filename/);
   assert.match(shell, /href: "\/student\/course"/);
   assert.match(shell, /href: "\/teacher\/course"/);
   assert.match(auth, /path\.startsWith\("\/teacher\/course"\)/);
