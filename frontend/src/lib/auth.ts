@@ -40,8 +40,10 @@ export async function authRequest<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  init: RequestInit = {},
 ): Promise<T> {
   const response = await apiFetch(path, {
+    ...init,
     method,
     body: body === undefined ? undefined : JSON.stringify(body),
   });

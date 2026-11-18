@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useAuth } from "./auth-provider";
-import { authRequest } from "@/lib/auth";
 import { Wordmark } from "./wordmark";
+import { NotificationCenter } from "./notification-center";
 import { futureTools } from "@/lib/future-tools";
 import { usePathname } from "next/navigation";
 import {
@@ -21,7 +21,6 @@ import {
   X,
   UserRound,
   ChevronDown,
-  Bell,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -29,9 +28,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { user, signOut } = useAuth();
   const [logoutError, setLogoutError] = useState("");
-  const [notifications, setNotifications] = useState<
-    { id: number; title: string; body: string; link: string }[]
-  >([]);
   const demonstrator = user?.role === "DEMONSTRATOR";
   const teacher = user?.role !== "STUDENT";
   const [open, setOpen] = useState(false);
@@ -73,14 +69,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("resize", handleResize);
     };
   }, [open]);
-  useEffect(() => {
-    if (!user) return;
-    void authRequest<
-      { id: number; title: string; body: string; link: string }[]
-    >("/recruitment/notifications/recruitment")
-      .then(setNotifications)
-      .catch(() => setNotifications([]));
-  }, [user]);
   const links = teacher
     ? [
         { href: "/teacher", label: "Dashboard", icon: LayoutDashboard },
@@ -307,24 +295,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Discrete Mathematics I<small>Course workspace</small>
               </span>
             </div>
-            <details className="account-control notification-control">
-              <summary aria-label="Notifications">
-                <Bell size={20} />
-              </summary>
-              <div className="account-menu">
-                <strong>Notifications</strong>
-                {notifications.length ? (
-                  notifications.map((item) => (
-                    <Link key={item.id} href={item.link}>
-                      <strong>{item.title}</strong>
-                      <p>{item.body}</p>
-                    </Link>
-                  ))
-                ) : (
-                  <p>No new notifications</p>
-                )}
-              </div>
-            </details>
+            {user && <NotificationCenter key={user.id} userId={user.id} />}
             <details className="account-control">
               <summary>
                 <span className="account-avatar">
