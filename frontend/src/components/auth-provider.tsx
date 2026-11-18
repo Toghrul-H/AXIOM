@@ -27,11 +27,14 @@ export function authRouteAccess(path: string) {
   const verificationPage = path === "/verify-email" || path === "/check-email";
   const recoveryPage =
     path === "/forgot-password" || path === "/reset-password";
+  const privacyPage = path === "/privacy";
   return {
     verificationPage,
+    privacyPage,
     publicPage:
       path === "/login" ||
       path === "/register" ||
+      privacyPage ||
       verificationPage ||
       recoveryPage,
     redirectAuthenticated: path === "/login" || path === "/register",
@@ -44,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   const path = usePathname();
   const router = useRouter();
-  const { verificationPage, publicPage, redirectAuthenticated } =
+  const { verificationPage, privacyPage, publicPage, redirectAuthenticated } =
     authRouteAccess(path);
   useEffect(() => {
     let alive = true;
@@ -109,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   };
   let content: React.ReactNode;
-  if (verificationPage) content = children;
+  if (verificationPage || privacyPage) content = children;
   else if (loading)
     content = (
       <main className="auth-page" role="status">

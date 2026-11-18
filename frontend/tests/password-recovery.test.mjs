@@ -231,11 +231,12 @@ test("password-recovery routes remain public while protected routes remain guard
     "./app-shell": { AppShell: "app-shell" },
   });
 
-  for (const path of ["/forgot-password", "/reset-password"]) {
+  for (const path of ["/forgot-password", "/reset-password", "/privacy"]) {
     const access = provider.authRouteAccess(path);
     assert.equal(access.publicPage, true);
     assert.equal(access.redirectAuthenticated, false);
   }
+  assert.equal(provider.authRouteAccess("/privacy").privacyPage, true);
   assert.equal(provider.authRouteAccess("/teacher").publicPage, false);
   assert.equal(provider.authRouteAccess("/login").redirectAuthenticated, true);
   assert.equal(provider.authRouteAccess("/verify-email").publicPage, true);
