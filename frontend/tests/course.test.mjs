@@ -141,6 +141,21 @@ test("course proxy forwards authentication and only allowlisted paths", async ()
   ]);
 });
 
+test("course proxy does not forward stale JSON content lengths", async () => {
+  const handler = route(
+    async () =>
+      new Response(JSON.stringify([{ id: 1, title: "Slides" }]), {
+        headers: { "content-type": "application/json", "content-length": "6" },
+      }),
+  );
+  const response = await handler.GET(
+    request("/manage/materials"),
+    context(["manage", "materials"]),
+  );
+  assert.equal(response.headers.get("content-length"), null);
+  assert.deepEqual(await response.json(), [{ id: 1, title: "Slides" }]);
+});
+
 test("course proxy preserves raw upload bytes and private download headers", async () => {
   let uploadBody;
   const handler = route(async (_url, init) => {

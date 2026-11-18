@@ -69,7 +69,9 @@ async function forward(
       Vary: "Cookie",
       "X-Content-Type-Options": "nosniff",
     });
-    for (const key of ["content-disposition", "content-length"]) {
+    // The upstream body can be decoded or streamed differently by Next/Vercel.
+    // Never forward its byte count onto this new response.
+    for (const key of ["content-disposition"]) {
       const value = response.headers.get(key);
       if (value) responseHeaders.set(key, value);
     }
