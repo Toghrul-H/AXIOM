@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header, Query, Path, Response
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.database import get_session
-from app.auth import staff_user, student_user
+from app.auth import require_roles, staff_user, student_user
 from app.auth_models import User
 from app.models import Question
 from app.quiz_models import Quiz, QuizQuestion, QuizAttempt
@@ -15,6 +15,7 @@ from app.services.quizzes import get_quiz, save_quiz, start_attempt, get_attempt
 router = APIRouter(tags=['Quizzes'])
 DB = Annotated[Session,Depends(get_session)]
 Identity = Annotated[User,Depends(student_user)]
+StudentPreview = Annotated[User,Depends(require_roles('STUDENT','LECTURER','ADMIN'))]
 Staff = Annotated[User,Depends(staff_user)]
 Id = Annotated[int,Path(gt=0)]
 Limit = Annotated[int,Query(ge=1,le=100)]
@@ -37,7 +38,7 @@ def update_quiz(quiz_id: Id,payload: QuizWrite,session: DB,actor: Staff):
     return save_quiz(session,payload,quiz_id,actor.id)
 
 @router.get('/student/quizzes',response_model=list[QuizSummary])
-def student_quizzes(session: DB,identity: Identity,limit: Limit=50,offset: Offset=0):
+def student_quizzes(session: DB,identity: StudentPreview,limit: Limit=50,offset: Offset=0):
     quizzes = list(session.scalars(select(Quiz).where(Quiz.status=='ACTIVE', Quiz.is_practice.is_(False)).order_by(Quiz.id).offset(offset).limit(limit)))
     result = []
     for q in quizzes:

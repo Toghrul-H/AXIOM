@@ -23,6 +23,7 @@ import {
 } from "@/lib/course";
 import { questionsApi, type Question } from "@/lib/questions";
 import { MaterialManager, PublicMaterials } from "./course-materials";
+import { useAuth } from "./auth-provider";
 
 type Props = { mode: "student" | "manager" };
 const blankChapter = (position: number) => ({ title: "", slug: "", position });
@@ -131,9 +132,11 @@ type StudentCourseTab = "overview" | "materials" | "practice" | "interactive";
 function StudentCourseTabs({
   active,
   select,
+  studentPreview = false,
 }: {
   active: StudentCourseTab;
   select: (tab: StudentCourseTab) => void;
+  studentPreview?: boolean;
 }) {
   const tabs: { id: StudentCourseTab; label: string }[] = [
     { id: "overview", label: "Overview" },
@@ -141,12 +144,15 @@ function StudentCourseTabs({
     { id: "practice", label: "Practice" },
     { id: "interactive", label: "Interactive tools" },
   ];
+  const visibleTabs = studentPreview
+    ? tabs.filter((tab) => tab.id !== "practice")
+    : tabs;
   return (
     <nav
       className="course-workspace-tabs"
       aria-label="Course learning sections"
     >
-      {tabs.map((tab) => (
+      {visibleTabs.map((tab) => (
         <button
           type="button"
           key={tab.id}
@@ -170,6 +176,7 @@ function StudentCourse({
   selected: CourseLesson | null;
   select: (lesson: CourseLesson | null) => void;
 }) {
+  const { studentView } = useAuth();
   const [activeTab, setActiveTab] = useState<StudentCourseTab>("overview");
   const materialGroups = chapters
     .flatMap((chapter) => [
@@ -193,7 +200,11 @@ function StudentCourse({
   if (selected)
     return (
       <main className="course-learning-workspace">
-        <StudentCourseTabs active="overview" select={changeTab} />
+        <StudentCourseTabs
+          active="overview"
+          select={changeTab}
+          studentPreview={studentView}
+        />
         <section className="course-layout">
           <div className="course-reading panel">
             <button
@@ -213,9 +224,16 @@ function StudentCourse({
                 <ul className="course-question-links">
                   {selected.questions.map((item) => (
                     <li key={item.question_id}>
-                      <Link href="/student/practice">
-                        Practice question {item.position + 1}
-                      </Link>
+                      {studentView ? (
+                        <span>
+                          Practice question {item.position + 1} is unavailable
+                          in preview.
+                        </span>
+                      ) : (
+                        <Link href="/student/practice">
+                          Practice question {item.position + 1}
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -224,6 +242,7 @@ function StudentCourse({
             <PublicMaterials
               materials={selected.materials}
               label={selected.title}
+              studentPreview={studentView}
             />
           </div>
         </section>
@@ -236,7 +255,11 @@ function StudentCourse({
         title="Course"
         description="Published explanations, course materials, practice links, and interactive tools."
       />
-      <StudentCourseTabs active={activeTab} select={changeTab} />
+      <StudentCourseTabs
+        active={activeTab}
+        select={changeTab}
+        studentPreview={studentView}
+      />
       {activeTab === "overview" &&
         (chapters.length === 0 ? (
           <section className="panel empty-state">
@@ -289,6 +312,7 @@ function StudentCourse({
                 <PublicMaterials
                   materials={group.materials}
                   label={group.label}
+                  studentPreview={studentView}
                 />
               </article>
             ))

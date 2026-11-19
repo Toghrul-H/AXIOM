@@ -3192,3 +3192,102 @@ label,
     width: 100%;
   }
 }
+
+/* Student View is a presentation-only staff preview, never impersonation. */
+.student-view-trigger {
+  justify-content: flex-start;
+  margin-top: var(--space-4);
+  width: 100%;
+}
+.student-view-banner {
+  align-items: center;
+  background: color-mix(
+    in srgb,
+    var(--color-primary) 9%,
+    var(--surface-raised)
+  );
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-primary) 35%, var(--border));
+  color: var(--text-primary);
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: 10px clamp(var(--space-4), 3vw, var(--space-6));
+}
+.student-view-banner > div {
+  display: grid;
+  gap: 2px;
+}
+.student-view-banner span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.teacher-dashboard-view-action {
+  display: flex;
+  justify-content: flex-end;
+  margin: calc(var(--space-4) * -1) 0 var(--space-4);
+}
+.student-preview-dashboard {
+  display: grid;
+  gap: var(--space-5);
+}
+.preview-notice {
+  border-left: 4px solid var(--color-primary);
+}
+.preview-notice p {
+  margin-bottom: 0;
+}
+.student-preview-actions {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.student-preview-actions > a {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.student-preview-actions svg {
+  color: var(--color-primary);
+}
+.student-preview-actions h2,
+.student-preview-actions p {
+  margin-bottom: var(--space-2);
+  margin-top: var(--space-2);
+}
+.student-preview-announcements > div {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
+.student-preview-announcements svg {
+  color: var(--color-primary);
+}
+.student-preview-announcements ul {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+}
+.student-preview-announcements li + li {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+.student-preview-announcements li p {
+  margin-bottom: 0;
+}
+@media (max-width: 760px) {
+  .student-view-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .student-view-banner .button,
+  .teacher-dashboard-view-action .button {
+    width: 100%;
+  }
+  .teacher-dashboard-view-action {
+    margin-top: calc(var(--space-4) * -1);
+  }
+  .student-preview-actions {
+    grid-template-columns: 1fr;
+  }
+}

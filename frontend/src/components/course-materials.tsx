@@ -38,9 +38,11 @@ function saveBlob(blob: Blob, filename: string) {
 export function PublicMaterials({
   materials,
   label,
+  studentPreview = false,
 }: {
   materials: CourseMaterialPublic[];
   label: string;
+  studentPreview?: boolean;
 }) {
   const [error, setError] = useState("");
   const [loadingId, setLoadingId] = useState<number | null>(null);
@@ -73,7 +75,7 @@ export function PublicMaterials({
     setLoadingId(material.id);
     setError("");
     try {
-      const file = await materialFile(material.id, action);
+      const file = await materialFile(material.id, action, studentPreview);
       if (action === "download") return saveBlob(file.blob, file.filename);
       const url = URL.createObjectURL(file.blob);
       const text = file.mediaType.startsWith("text/")

@@ -11,6 +11,9 @@ const workspace = source("../src/components/course-workspace.tsx");
 const materialUi = source("../src/components/course-materials.tsx");
 const shell = source("../src/components/app-shell.tsx");
 const auth = source("../src/components/auth-provider.tsx");
+const previewDashboard = source(
+  "../src/components/student-preview-dashboard.tsx",
+);
 
 function route(fetch) {
   const compiled = ts.transpileModule(proxySource, {
@@ -213,5 +216,16 @@ test("course UI separates student reading from staff management", () => {
   assert.doesNotMatch(
     workspace,
     /expected_answer|correct_boolean|explanation.*question/iu,
+  );
+});
+
+test("Student Preview uses published-only endpoints and cannot start student work", () => {
+  assert.ok(proxySource.includes("student-preview\\/materials\\/[1-9][0-9]*"));
+  assert.match(client, /student-preview\/materials/);
+  assert.match(workspace, /studentPreview=\{studentView\}/);
+  assert.match(previewDashboard, /announcementsApi\s*\.list\(\)/);
+  assert.match(
+    previewDashboard,
+    /never loads student progress, tasks, attempts, grades, messages, or Study Partner data/i,
   );
 });

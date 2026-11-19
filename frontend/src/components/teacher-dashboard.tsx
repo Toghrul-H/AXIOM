@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   FileQuestion,
   GraduationCap,
+  Eye,
   Megaphone,
   PenLine,
   UsersRound,
@@ -40,7 +41,7 @@ function displayDate(value: string | null) {
 }
 
 export function TeacherDashboard() {
-  const { user } = useAuth();
+  const { user, enterStudentView } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -110,6 +111,18 @@ export function TeacherDashboard() {
         title={`Welcome back, ${displayName}`}
         description="A focused overview of current teaching work and the next actions available to you."
       />
+      {["LECTURER", "ADMIN"].includes(user?.role ?? "") && (
+        <div className="teacher-dashboard-view-action">
+          <button
+            className="button button-secondary"
+            onClick={enterStudentView}
+            type="button"
+          >
+            <Eye size={16} aria-hidden="true" />
+            Student View
+          </button>
+        </div>
+      )}
 
       {error ? (
         <section className="error-message" role="alert">

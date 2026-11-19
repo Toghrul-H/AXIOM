@@ -76,8 +76,15 @@ function errorFrom(response: Response) {
     });
 }
 
-export async function materialFile(id: number, action: "download" | "preview") {
-  const response = await apiFetch(`/course/materials/${id}/${action}`);
+export async function materialFile(
+  id: number,
+  action: "download" | "preview",
+  studentPreview = false,
+) {
+  const path = studentPreview
+    ? `/course/student-preview/materials/${id}/${action}`
+    : `/course/materials/${id}/${action}`;
+  const response = await apiFetch(path);
   if (!response.ok) return errorFrom(response);
   const disposition = response.headers.get("content-disposition") ?? "";
   const filename =

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user, manager_user, student_user
+from app.auth import get_current_user, manager_user, require_roles, student_user
 from app.auth_models import User
 from app.course_schemas import (
     ChapterCreate, ChapterPatch, ChapterRead, LessonCreate, LessonPatch, LessonRead,
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/course", tags=["Course"])
 DB = Annotated[Session, Depends(get_session)]
 Manager = Annotated[User, Depends(manager_user)]
 Student = Annotated[User, Depends(student_user)]
+StudentPreview = Annotated[User, Depends(require_roles("STUDENT", "LECTURER", "ADMIN"))]
 Authenticated = Annotated[User, Depends(get_current_user)]
 Id = Annotated[int, Path(gt=0)]
 
@@ -82,12 +83,12 @@ def _serve_material(material, *, inline: bool) -> Response:
 
 
 @router.get("/chapters", response_model=list[ChapterRead], response_model_exclude_none=True)
-def chapters(session: DB, actor: Student):
+def chapters(session: DB, actor: StudentPreview):
     return course.list_chapters(session, published_only=True)
 
 
 @router.get("/lessons/{lesson_id}", response_model=LessonRead, response_model_exclude_none=True)
-def lesson(lesson_id: Id, session: DB, actor: Student):
+def lesson(lesson_id: Id, session: DB, actor: StudentPreview):
     return course.published_lesson(session, lesson_id)
 
 
@@ -184,6 +185,22 @@ def download_material(material_id: Id, session: DB, actor: Authenticated):
 @router.get("/materials/{material_id}/preview")
 def preview_material(material_id: Id, session: DB, actor: Authenticated):
     material = _material_for_user(session, material_id, actor)
+    if not is_inline_preview_type(material.media_type or ""):
+        raise HTTPException(422, "This material type cannot be previewed inline")
+    return _serve_material(material, inline=True)
+
+
+# This deliberately has a separate path from the staff material endpoints.
+# Lecturers/Admins use it only while inspecting the exact student-visible
+# material set; it never grants access to drafts by a known material ID.
+@router.get("/student-preview/materials/{material_id}/download")
+def preview_download_material(material_id: Id, session: DB, actor: StudentPreview):
+    return _serve_material(course.material_visible_to_student(session, material_id), inline=False)
+
+
+@router.get("/student-preview/materials/{material_id}/preview")
+def preview_inline_material(material_id: Id, session: DB, actor: StudentPreview):
+    material = course.material_visible_to_student(session, material_id)
     if not is_inline_preview_type(material.media_type or ""):
         raise HTTPException(422, "This material type cannot be previewed inline")
     return _serve_material(material, inline=True)

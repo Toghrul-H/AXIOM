@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.auth import manager_user, student_user
+from app.auth import manager_user, require_roles, student_user
 from app.auth_models import User
 from app.database import get_session
 from app.announcement_models import CourseAnnouncement, CourseAnnouncementRead
@@ -14,6 +14,7 @@ router = APIRouter(tags=["Course announcements"])
 DB = Annotated[Session, Depends(get_session)]
 Manager = Annotated[User, Depends(manager_user)]
 Student = Annotated[User, Depends(student_user)]
+StudentPreview = Annotated[User, Depends(require_roles("STUDENT", "LECTURER", "ADMIN"))]
 Id = Annotated[int, Path(gt=0)]
 
 def _announcement(session, identifier):
@@ -62,7 +63,7 @@ def delete(announcement_id: Id, session: DB, actor: Manager):
     session.delete(_announcement(session, announcement_id)); session.commit()
 
 @router.get("/student/announcements", response_model=list[AnnouncementRead])
-def student_list(session: DB, actor: Student):
+def student_list(session: DB, actor: StudentPreview):
     rows = session.execute(select(CourseAnnouncement, CourseAnnouncementRead.read_at).outerjoin(CourseAnnouncementRead, (CourseAnnouncementRead.announcement_id == CourseAnnouncement.id) & (CourseAnnouncementRead.user_id == actor.id)).where(CourseAnnouncement.status == "published").order_by(CourseAnnouncement.pinned.desc(), CourseAnnouncement.published_at.desc(), CourseAnnouncement.id.desc()).limit(20)).all()
     return [_read(value, read_at=read_at) for value, read_at in rows]
 

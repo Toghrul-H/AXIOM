@@ -14,7 +14,7 @@ async function forward(
   const { parts = [] } = await context.params;
   const suffix = parts.join("/");
   const allowed: Record<string, RegExp> = {
-    GET: /^(?:chapters|manage\/(?:chapters|materials)|lessons\/[1-9][0-9]*|materials\/[1-9][0-9]*\/(?:download|preview))$/,
+    GET: /^(?:chapters|manage\/(?:chapters|materials)|lessons\/[1-9][0-9]*|materials\/[1-9][0-9]*\/(?:download|preview)|student-preview\/materials\/[1-9][0-9]*\/(?:download|preview))$/,
     POST: /^(?:chapters|lessons|materials|chapters\/[1-9][0-9]*\/(?:publish|unpublish)|lessons\/[1-9][0-9]*\/(?:publish|unpublish)|materials\/[1-9][0-9]*\/(?:publish|unpublish))$/,
     PATCH: /^(?:chapters|lessons|materials)\/[1-9][0-9]*$/,
     PUT: /^(?:chapters\/reorder|chapters\/[1-9][0-9]*\/(?:lessons|materials)\/reorder|lessons\/[1-9][0-9]*\/materials\/reorder|materials\/[1-9][0-9]*\/file)$/,

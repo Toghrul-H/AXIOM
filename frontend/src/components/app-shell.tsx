@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  Eye,
   MessageCircle,
   Settings,
 } from "lucide-react";
@@ -30,10 +31,12 @@ import { useEffect, useRef, useState } from "react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  const { user, signOut } = useAuth();
+  const { user, signOut, studentView, enterStudentView, exitStudentView } =
+    useAuth();
   const [logoutError, setLogoutError] = useState("");
   const demonstrator = user?.role === "DEMONSTRATOR";
-  const teacher = user?.role !== "STUDENT";
+  const staffCanPreview = user && ["LECTURER", "ADMIN"].includes(user.role);
+  const teacher = user?.role !== "STUDENT" && !studentView;
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () =>
@@ -92,12 +95,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ]
     : [
         { href: "/student", label: "Dashboard", icon: LayoutDashboard },
-        { href: "/student/learn", label: "Learn", icon: BookOpen },
         { href: "/student/course", label: "Course", icon: BookOpen },
-        { href: "/student/practice", label: "Practice", icon: Shapes },
         { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
-        { href: "/student/history", label: "History", icon: BookOpen },
-        ...(user?.is_active
+        ...(!studentView
+          ? [
+              { href: "/student/practice", label: "Practice", icon: Shapes },
+              { href: "/student/history", label: "History", icon: BookOpen },
+            ]
+          : []),
+        ...(!studentView && user?.is_active
           ? [
               {
                 href: "/student/study-partner",
@@ -106,7 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               },
             ]
           : []),
-        ...(user?.is_active
+        ...(!studentView && user?.is_active
           ? [
               {
                 href: "/student/messages",
@@ -115,33 +121,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               },
             ]
           : []),
-        {
-          href: "/student/progress",
-          label: "Progress",
-          icon: ChartNoAxesCombined,
-        },
+        ...(!studentView
+          ? [
+              {
+                href: "/student/progress",
+                label: "Progress",
+                icon: ChartNoAxesCombined,
+              },
+            ]
+          : []),
       ];
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/users",
       label: "Staff Management",
       icon: GraduationCap,
     });
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/recruitment",
       label: "Demonstrator Recruitment",
       icon: GraduationCap,
     });
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({ href: "/teacher/exams", label: "Exam Builder", icon: Shapes });
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/announcements",
       label: "Announcements",
       icon: MessageCircle,
     });
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/course",
       label: "Course management",
@@ -157,8 +167,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : [
         { href: "/student", label: "Home", icon: LayoutDashboard },
         { href: "/student/course", label: "Course", icon: BookOpen },
-        { href: "/student/practice", label: "Practice", icon: Shapes },
-        user?.is_active
+        { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
+        !studentView && user?.is_active
           ? {
               href: "/student/messages",
               label: "Messages",
@@ -171,13 +181,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (href !== (teacher ? "/teacher" : "/student") &&
       path.startsWith(`${href}/`)) ||
     (label === "Question Bank" && path.endsWith("/edit"));
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/practice-sheets",
       label: "Practice Sheets",
       icon: Shapes,
     });
-  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+  if (teacher && user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/assessments",
       label: "Assessment Documents",
@@ -281,6 +291,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+        {staffCanPreview && !studentView && (
+          <button
+            className="button button-secondary student-view-trigger"
+            onClick={enterStudentView}
+            type="button"
+          >
+            <Eye size={16} aria-hidden="true" />
+            Student View
+          </button>
+        )}
         {!teacher && (
           <section className="sidebar-course" aria-label="Course topics">
             <p className="nav-caption">COURSE</p>
@@ -393,6 +413,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </details>
           </div>
         </header>
+        {studentView && (
+          <section className="student-view-banner" role="status">
+            <div>
+              <strong>You are viewing AXIOM as a student</strong>
+              <span>
+                Your lecturer account remains active. Student-specific data and
+                write actions are unavailable in this preview.
+              </span>
+            </div>
+            <button
+              className="button button-secondary"
+              onClick={exitStudentView}
+              type="button"
+            >
+              Return to Lecturer View
+            </button>
+          </section>
+        )}
         <main id="main-content" className="main-content" tabIndex={-1}>
           {children}
         </main>

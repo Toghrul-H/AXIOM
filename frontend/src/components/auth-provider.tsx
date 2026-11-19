@@ -14,9 +14,15 @@ import { AppShell } from "./app-shell";
 
 const Context = createContext<{
   user: User | null;
+  studentView: boolean;
+  enterStudentView: () => void;
+  exitStudentView: () => void;
   signIn: (state: AuthState) => void;
   signOut: () => Promise<void>;
 } | null>(null);
+const STUDENT_VIEW_KEY = "axiom-student-view";
+const canPreviewStudentView = (user: User | null) =>
+  user !== null && ["LECTURER", "ADMIN"].includes(user.role);
 export function useAuth() {
   const value = useContext(Context);
   if (!value) throw new Error("Missing authentication provider");
@@ -45,6 +51,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [studentViewRequested, setStudentViewRequested] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(STUDENT_VIEW_KEY) === "true",
+  );
   const path = usePathname();
   const router = useRouter();
   const { verificationPage, privacyPage, publicPage, redirectAuthenticated } =
@@ -102,15 +113,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = (state: AuthState) => {
     setAuth(state);
     setUser(state.user);
+    setStudentViewRequested(false);
+    window.localStorage.removeItem(STUDENT_VIEW_KEY);
     setError("");
     router.replace(homeFor(state.user));
+  };
+  const enterStudentView = () => {
+    if (!canPreviewStudentView(user)) return;
+    window.localStorage.setItem(STUDENT_VIEW_KEY, "true");
+    setStudentViewRequested(true);
+    router.push("/student");
+  };
+  const exitStudentView = () => {
+    window.localStorage.removeItem(STUDENT_VIEW_KEY);
+    setStudentViewRequested(false);
+    if (user) router.push(homeFor(user));
   };
   const signOut = async () => {
     await authRequest<void>("/auth/logout", "POST");
     setAuth(null);
     setUser(null);
+    setStudentViewRequested(false);
+    window.localStorage.removeItem(STUDENT_VIEW_KEY);
     router.replace("/login");
   };
+  const studentView = studentViewRequested && canPreviewStudentView(user);
   let content: React.ReactNode;
   if (verificationPage || privacyPage) content = children;
   else if (loading)
@@ -131,9 +158,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   else {
     const staffPath =
       path.startsWith("/teacher") || path.startsWith("/demonstrator");
+    const previewingAsStudent =
+      studentView &&
+      (path === "/student" ||
+        path.startsWith("/student/course") ||
+        path.startsWith("/student/quizzes"));
     const forbidden =
       (staffPath && user.role === "STUDENT") ||
-      (path.startsWith("/student") && user.role !== "STUDENT") ||
+      (path.startsWith("/student") &&
+        user.role !== "STUDENT" &&
+        !previewingAsStudent) ||
       ((path.startsWith("/teacher/users") ||
         path.startsWith("/teacher/assessments") ||
         path.startsWith("/teacher/exams") ||
@@ -156,7 +190,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
   return (
-    <Context.Provider value={{ user, signIn, signOut }}>
+    <Context.Provider
+      value={{
+        user,
+        studentView,
+        enterStudentView,
+        exitStudentView,
+        signIn,
+        signOut,
+      }}
+    >
       {content}
     </Context.Provider>
   );

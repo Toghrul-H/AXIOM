@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 import pytest
 from fastapi import HTTPException
 
-from app.auth import manager_user, student_user
+from app.auth import manager_user, require_roles, student_user
 from app.auth_models import User
 from app.course_models import CourseChapter, CourseLesson
 from app.course_schemas import ChapterCreate, ChapterPatch, LessonCreate, LessonPatch, OrderUpdate
@@ -138,6 +138,23 @@ def test_draft_lesson_is_not_addressable_by_students(setup):
     assert course.published_lesson(session, lesson.id)["id"] == lesson.id
 
 
+def test_staff_preview_uses_student_visibility_without_student_writes(setup):
+    session, question, lecturer, student, demonstrator = setup
+    preview = require_roles("STUDENT", "LECTURER", "ADMIN")
+    assert preview(lecturer) is lecturer
+    assert preview(student) is student
+    with pytest.raises(HTTPException) as error:
+        preview(demonstrator)
+    assert error.value.status_code == 403
+    chapter = course.create_chapter(session, chapter_payload())
+    lesson = course.create_lesson(session, lesson_payload(chapter.id, question.id))
+    # The preview routes delegate to these same published-only service rules.
+    assert course.list_chapters(session, published_only=True) == []
+    course.publish_lesson(session, lesson.id)
+    course.publish_chapter(session, chapter.id)
+    assert course.published_lesson(session, lesson.id)["id"] == lesson.id
+
+
 def test_course_deletion_removes_only_the_selected_content(setup):
     session, question, _, _, _ = setup
     first = course.create_chapter(session, chapter_payload())
@@ -165,6 +182,8 @@ def test_course_routes_are_registered_with_expected_methods():
         ("/course/materials/{material_id}/file", "PUT"),
         ("/course/materials/{material_id}/download", "GET"),
         ("/course/materials/{material_id}/preview", "GET"),
+        ("/course/student-preview/materials/{material_id}/download", "GET"),
+        ("/course/student-preview/materials/{material_id}/preview", "GET"),
         ("/course/chapters/{chapter_id}/materials/reorder", "PUT"),
     }:
         assert expected in routes
