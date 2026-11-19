@@ -2,19 +2,23 @@
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from sqlalchemy import and_, delete, exists, or_, select, update
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi.responses import Response
+from sqlalchemy import and_, delete, exists, func, or_, select, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import student_user, utc
 from app.auth_models import User
 from app.database import get_session
 from app.models import Topic
-from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerMessage, StudyPartnerProfile, StudyPartnerRequest, StudyPartnerTopic
-from app.study_partner_schemas import AvailabilitySlot, StudyPartnerBlockCreate, StudyPartnerBlockRead, StudyPartnerChatRead, StudyPartnerMessageCreate, StudyPartnerMessageRead, StudyPartnerProfileRead, StudyPartnerProfileWrite, StudyPartnerPublicRead, StudyPartnerRequestCreate, StudyPartnerRequestRead, StudyPartnerTopicRead
+from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerChatReceipt, StudyPartnerMessage, StudyPartnerMessageAttachment, StudyPartnerMessageReaction, StudyPartnerProfile, StudyPartnerRequest, StudyPartnerTopic
+from app.study_partner_schemas import AvailabilitySlot, StudyPartnerBlockCreate, StudyPartnerBlockRead, StudyPartnerChatRead, StudyPartnerChatReadWrite, StudyPartnerChatReceiptRead, StudyPartnerChatTypingWrite, StudyPartnerMessageCreate, StudyPartnerMessageAttachmentRead, StudyPartnerMessageReactionWrite, StudyPartnerMessageRead, StudyPartnerProfileRead, StudyPartnerProfileWrite, StudyPartnerPublicRead, StudyPartnerRequestCreate, StudyPartnerRequestRead, StudyPartnerTopicRead
+from app.services.course_material_storage import MaterialValidationError, StorageConfigurationError, StorageOperationError, is_inline_preview_type, required_private_storage, validate_material_upload
+from app.config import get_settings
 from app.services.notifications import create_notification
 
 
@@ -24,6 +28,15 @@ Student = Annotated[User, Depends(student_user)]
 Id = Annotated[int, Path(gt=0)]
 
 REQUEST_COOLDOWN = timedelta(hours=24)
+TYPING_TTL = timedelta(seconds=12)
+CHAT_ATTACHMENT_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "text/plain",
+    "text/markdown",
+}
 
 
 def now() -> datetime:
@@ -260,13 +273,259 @@ def accessible_chat_or_404(session: Session, request_id: int, actor_id: int) -> 
     return request
 
 
-def message_read(message: StudyPartnerMessage) -> dict:
+def message_reads(
+    session: Session,
+    messages: list[StudyPartnerMessage],
+    actor_id: int,
+    counterpart_last_read_message_id: int | None = None,
+) -> list[dict]:
+    if not messages:
+        return []
+    message_ids = [message.id for message in messages]
+    counts: dict[int, list[dict]] = defaultdict(list)
+    for message_id, emoji, count in session.execute(
+        select(
+            StudyPartnerMessageReaction.message_id,
+            StudyPartnerMessageReaction.emoji,
+            func.count(StudyPartnerMessageReaction.id),
+        )
+        .where(StudyPartnerMessageReaction.message_id.in_(message_ids))
+        .group_by(StudyPartnerMessageReaction.message_id, StudyPartnerMessageReaction.emoji)
+        .order_by(StudyPartnerMessageReaction.message_id, StudyPartnerMessageReaction.emoji)
+    ):
+        counts[message_id].append({"emoji": emoji, "count": count, "reacted_by_me": False})
+    mine = set(
+        session.execute(
+            select(StudyPartnerMessageReaction.message_id, StudyPartnerMessageReaction.emoji).where(
+                StudyPartnerMessageReaction.message_id.in_(message_ids),
+                StudyPartnerMessageReaction.user_id == actor_id,
+            )
+        )
+    )
+    for message_id, reactions in counts.items():
+        for reaction in reactions:
+            reaction["reacted_by_me"] = (message_id, reaction["emoji"]) in mine
+    attachments: dict[int, list[dict]] = defaultdict(list)
+    for attachment in session.scalars(
+        select(StudyPartnerMessageAttachment)
+        .where(StudyPartnerMessageAttachment.message_id.in_(message_ids))
+        .order_by(StudyPartnerMessageAttachment.id)
+    ):
+        if attachment.message_id is not None:
+            attachments[attachment.message_id].append(attachment_read(attachment))
+    reply_ids = {message.reply_to_message_id for message in messages if message.reply_to_message_id is not None}
+    replies = {
+        reply.id: reply
+        for reply in session.scalars(
+            select(StudyPartnerMessage).where(
+                StudyPartnerMessage.id.in_(reply_ids),
+                StudyPartnerMessage.request_id == messages[0].request_id,
+            )
+        )
+    } if reply_ids else {}
+    return [
+        {
+            "id": message.id,
+            "sender_user_id": message.sender_user_id,
+            "content": message.content,
+            "created_at": message.created_at,
+            "reply_to_message_id": message.reply_to_message_id,
+            "reply_to": (
+                {"id": reply.id, "sender_user_id": reply.sender_user_id, "content": reply.content}
+                if (reply := replies.get(message.reply_to_message_id)) is not None
+                else None
+            ),
+            "reactions": counts.get(message.id, []),
+            "attachments": attachments.get(message.id, []),
+            "seen_by_counterpart": bool(
+                message.sender_user_id == actor_id
+                and counterpart_last_read_message_id is not None
+                and message.id <= counterpart_last_read_message_id
+            ),
+        }
+        for message in messages
+    ]
+
+
+def message_read(
+    session: Session,
+    message: StudyPartnerMessage,
+    actor_id: int,
+    counterpart_last_read_message_id: int | None = None,
+) -> dict:
+    return message_reads(session, [message], actor_id, counterpart_last_read_message_id)[0]
+
+
+def chat_message_or_404(session: Session, request_id: int, message_id: int, actor_id: int) -> StudyPartnerMessage:
+    accessible_chat_or_404(session, request_id, actor_id)
+    message = session.scalar(
+        select(StudyPartnerMessage).where(
+            StudyPartnerMessage.id == message_id,
+            StudyPartnerMessage.request_id == request_id,
+        )
+    )
+    if message is None:
+        raise HTTPException(404, "Message not available")
+    return message
+
+
+def counterpart_id(request: StudyPartnerRequest, actor_id: int) -> int:
+    return request.recipient_user_id if request.requester_user_id == actor_id else request.requester_user_id
+
+
+def receipt_for(
+    session: Session,
+    request_id: int,
+    user_id: int,
+    *,
+    create: bool = False,
+) -> StudyPartnerChatReceipt | None:
+    receipt = session.get(StudyPartnerChatReceipt, {"request_id": request_id, "user_id": user_id})
+    if receipt is None and create:
+        receipt = StudyPartnerChatReceipt(request_id=request_id, user_id=user_id)
+        session.add(receipt)
+        session.flush()
+    return receipt
+
+
+def attachment_read(attachment: StudyPartnerMessageAttachment) -> dict:
     return {
-        "id": message.id,
-        "sender_user_id": message.sender_user_id,
-        "content": message.content,
-        "created_at": message.created_at,
+        "id": attachment.id,
+        "filename": attachment.original_filename,
+        "media_type": attachment.media_type,
+        "size_bytes": attachment.size_bytes,
+        "is_inline_preview": is_inline_preview_type(attachment.media_type),
     }
+
+
+def _attachment_storage_or_unavailable():
+    try:
+        return required_private_storage()
+    except StorageConfigurationError:
+        raise HTTPException(503, "Chat attachment storage is unavailable") from None
+
+
+async def _read_attachment_upload(request: Request) -> bytes:
+    limit = get_settings().study_partner_chat_max_attachment_bytes
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            raise HTTPException(413, "Chat attachment exceeds the configured size limit")
+    return bytes(body)
+
+
+def attachment_for_actor_or_404(
+    session: Session,
+    request_id: int,
+    attachment_id: int,
+    actor_id: int,
+) -> StudyPartnerMessageAttachment:
+    accessible_chat_or_404(session, request_id, actor_id)
+    attachment = session.scalar(
+        select(StudyPartnerMessageAttachment).where(
+            StudyPartnerMessageAttachment.id == attachment_id,
+            StudyPartnerMessageAttachment.request_id == request_id,
+        )
+    )
+    if attachment is None or (
+        attachment.message_id is None and attachment.uploader_user_id != actor_id
+    ):
+        raise HTTPException(404, "Attachment not available")
+    return attachment
+
+
+def serve_attachment(attachment: StudyPartnerMessageAttachment, *, inline: bool) -> Response:
+    storage = _attachment_storage_or_unavailable()
+    try:
+        content = storage.get(
+            attachment.storage_key,
+            max_bytes=get_settings().study_partner_chat_max_attachment_bytes,
+        )
+    except StorageOperationError:
+        raise HTTPException(502, "Chat attachment is unavailable") from None
+    if (
+        len(content) != attachment.size_bytes
+        or sha256(content).hexdigest() != attachment.sha256
+    ):
+        raise HTTPException(502, "Chat attachment is unavailable")
+    media_type = attachment.media_type
+    if inline and media_type == "text/markdown":
+        media_type = "text/plain; charset=utf-8"
+    elif media_type.startswith("text/"):
+        media_type = f"{media_type}; charset=utf-8"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{attachment.original_filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def upload_chat_attachment_bytes(
+    session: Session,
+    request_id: int,
+    actor_id: int,
+    filename: str | None,
+    claimed_media_type: str | None,
+    content: bytes,
+) -> StudyPartnerMessageAttachment:
+    accessible_chat_or_404(session, request_id, actor_id)
+    try:
+        file = validate_material_upload(
+            filename,
+            claimed_media_type,
+            content,
+            max_bytes=get_settings().study_partner_chat_max_attachment_bytes,
+        )
+    except MaterialValidationError as error:
+        raise HTTPException(422, str(error)) from None
+    if file.media_type not in CHAT_ATTACHMENT_TYPES:
+        raise HTTPException(422, "Unsupported chat attachment type")
+    storage = _attachment_storage_or_unavailable()
+    key = storage.new_key()
+    try:
+        stored_key = storage.put(key, file) or key
+    except StorageOperationError:
+        try:
+            storage.delete(key)
+        except StorageOperationError:
+            pass
+        raise HTTPException(502, "Chat attachment storage is temporarily unavailable") from None
+    attachment = StudyPartnerMessageAttachment(
+        request_id=request_id,
+        uploader_user_id=actor_id,
+        original_filename=file.filename,
+        storage_key=stored_key,
+        media_type=file.media_type,
+        size_bytes=file.size_bytes,
+        sha256=file.sha256,
+    )
+    session.add(attachment)
+    try:
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        try:
+            storage.delete(stored_key)
+        except StorageOperationError:
+            pass
+        raise HTTPException(503, "Chat attachment could not be saved; retry it") from None
+    session.refresh(attachment)
+    return attachment
+
+
+def counterpart_last_read_message_id(
+    session: Session, request_id: int, actor_id: int
+) -> int | None:
+    request = session.get(StudyPartnerRequest, request_id)
+    if request is None:
+        return None
+    receipt = receipt_for(session, request_id, counterpart_id(request, actor_id))
+    return receipt.last_read_message_id if receipt else None
 
 
 @router.get("/study-partner/me", response_model=StudyPartnerProfileRead)
@@ -476,6 +735,14 @@ def chats(session: DB, actor: Student):
     if not accessible:
         return []
     request_ids = [request.id for request in accessible]
+    receipts = {
+        (receipt.request_id, receipt.user_id): receipt
+        for receipt in session.scalars(
+            select(StudyPartnerChatReceipt).where(
+                StudyPartnerChatReceipt.request_id.in_(request_ids)
+            )
+        )
+    }
     counterpart_ids = {
         request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id
         for request in accessible
@@ -493,15 +760,31 @@ def chats(session: DB, actor: Student):
         latest_by_request.setdefault(message.request_id, message)
     result = []
     for request in accessible:
-        counterpart_id = request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id
-        profile = profiles.get(counterpart_id)
+        other_user_id = counterpart_id(request, actor.id)
+        profile = profiles.get(other_user_id)
         latest = latest_by_request.get(request.id)
+        receipt = receipts.get((request.id, actor.id))
+        unread_statement = select(func.count(StudyPartnerMessage.id)).where(
+            StudyPartnerMessage.request_id == request.id,
+            StudyPartnerMessage.sender_user_id != actor.id,
+        )
+        if receipt and receipt.last_read_message_id is not None:
+            unread_statement = unread_statement.where(
+                StudyPartnerMessage.id > receipt.last_read_message_id
+            )
+        other_receipt = receipts.get((request.id, other_user_id))
         result.append(
             {
                 "request_id": request.id,
-                "counterpart": {"profile_id": counterpart_id, "display_name": profile.display_name if profile else "Study partner"},
+                "counterpart": {"profile_id": other_user_id, "display_name": profile.display_name if profile else "Study partner"},
                 "last_message_preview": latest.content.replace("\n", " ")[:160] if latest else None,
                 "last_message_at": latest.created_at if latest else None,
+                "unread_count": session.scalar(unread_statement) or 0,
+                "counterpart_typing": bool(
+                    other_receipt
+                    and other_receipt.typing_expires_at
+                    and utc(other_receipt.typing_expires_at) > now()
+                ),
             }
         )
     return sorted(result, key=lambda item: (utc(item["last_message_at"]) if item["last_message_at"] else datetime.min.replace(tzinfo=timezone.utc), item["request_id"]), reverse=True)
@@ -515,31 +798,172 @@ def chat_messages(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ):
-    accessible_chat_or_404(session, request_id, actor.id)
-    return [
-        message_read(message)
-        for message in session.scalars(
+    request = accessible_chat_or_404(session, request_id, actor.id)
+    messages = list(
+        session.scalars(
             select(StudyPartnerMessage)
             .where(StudyPartnerMessage.request_id == request_id)
             .order_by(StudyPartnerMessage.created_at, StudyPartnerMessage.id)
             .offset(offset)
             .limit(limit)
         )
-    ]
+    )
+    other_receipt = receipt_for(session, request_id, counterpart_id(request, actor.id))
+    return message_reads(
+        session,
+        messages,
+        actor.id,
+        other_receipt.last_read_message_id if other_receipt else None,
+    )
+
+
+@router.post(
+    "/study-partner/chats/{request_id}/read",
+    response_model=StudyPartnerChatReceiptRead,
+)
+def mark_chat_read(
+    request_id: Id,
+    payload: StudyPartnerChatReadWrite,
+    session: DB,
+    actor: Student,
+):
+    accessible_chat_or_404(session, request_id, actor.id)
+    message = session.scalar(
+        select(StudyPartnerMessage).where(
+            StudyPartnerMessage.id == payload.last_message_id,
+            StudyPartnerMessage.request_id == request_id,
+        )
+    )
+    if message is None:
+        raise HTTPException(404, "Message not available")
+    receipt = receipt_for(session, request_id, actor.id, create=True)
+    if receipt.last_read_message_id is None or message.id > receipt.last_read_message_id:
+        receipt.last_read_message_id = message.id
+        session.commit()
+    return {"last_read_message_id": receipt.last_read_message_id}
+
+
+@router.post("/study-partner/chats/{request_id}/typing")
+def update_chat_typing(
+    request_id: Id,
+    payload: StudyPartnerChatTypingWrite,
+    session: DB,
+    actor: Student,
+):
+    accessible_chat_or_404(session, request_id, actor.id)
+    receipt = receipt_for(session, request_id, actor.id, create=True)
+    receipt.typing_expires_at = now() + TYPING_TTL if payload.is_typing else None
+    session.commit()
+    return {"is_typing": payload.is_typing}
+
+
+@router.post(
+    "/study-partner/chats/{request_id}/attachments",
+    response_model=StudyPartnerMessageAttachmentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_chat_attachment(
+    request_id: Id,
+    request: Request,
+    session: DB,
+    actor: Student,
+):
+    content = await _read_attachment_upload(request)
+    return attachment_read(
+        upload_chat_attachment_bytes(
+            session,
+            request_id,
+            actor.id,
+            request.headers.get("X-Chat-Filename"),
+            request.headers.get("Content-Type"),
+            content,
+        )
+    )
+
+
+@router.delete("/study-partner/chats/{request_id}/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_pending_chat_attachment(
+    request_id: Id,
+    attachment_id: Id,
+    session: DB,
+    actor: Student,
+):
+    attachment = attachment_for_actor_or_404(session, request_id, attachment_id, actor.id)
+    if attachment.message_id is not None or attachment.uploader_user_id != actor.id:
+        raise HTTPException(404, "Attachment not available")
+    storage = _attachment_storage_or_unavailable()
+    try:
+        storage.delete(attachment.storage_key)
+    except StorageOperationError:
+        raise HTTPException(502, "Chat attachment storage is temporarily unavailable") from None
+    session.delete(attachment)
+    try:
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        raise HTTPException(503, "Chat attachment deletion could not be completed; retry it") from None
+
+
+@router.get("/study-partner/chats/{request_id}/attachments/{attachment_id}/download")
+def download_chat_attachment(request_id: Id, attachment_id: Id, session: DB, actor: Student):
+    return serve_attachment(
+        attachment_for_actor_or_404(session, request_id, attachment_id, actor.id),
+        inline=False,
+    )
+
+
+@router.get("/study-partner/chats/{request_id}/attachments/{attachment_id}/preview")
+def preview_chat_attachment(request_id: Id, attachment_id: Id, session: DB, actor: Student):
+    attachment = attachment_for_actor_or_404(session, request_id, attachment_id, actor.id)
+    if not is_inline_preview_type(attachment.media_type):
+        raise HTTPException(422, "This attachment type cannot be previewed inline")
+    return serve_attachment(attachment, inline=True)
 
 
 @router.post("/study-partner/chats/{request_id}/messages", response_model=StudyPartnerMessageRead, status_code=status.HTTP_201_CREATED)
 def send_chat_message(request_id: Id, payload: StudyPartnerMessageCreate, session: DB, actor: Student):
     request = accessible_chat_or_404(session, request_id, actor.id)
-    counterpart_id = request.recipient_user_id if request.requester_user_id == actor.id else request.requester_user_id
-    lock_pair(session, actor.id, counterpart_id)
+    other_user_id = counterpart_id(request, actor.id)
+    lock_pair(session, actor.id, other_user_id)
     accessible_chat_or_404(session, request_id, actor.id)
-    message = StudyPartnerMessage(request_id=request_id, sender_user_id=actor.id, content=payload.content)
+    if payload.reply_to_message_id is not None:
+        reply = session.scalar(
+            select(StudyPartnerMessage).where(
+                StudyPartnerMessage.id == payload.reply_to_message_id,
+                StudyPartnerMessage.request_id == request_id,
+            )
+        )
+        if reply is None:
+            raise HTTPException(422, "Reply message is not available in this conversation")
+    attachments: list[StudyPartnerMessageAttachment] = []
+    if payload.attachment_ids:
+        attachments = list(
+            session.scalars(
+                select(StudyPartnerMessageAttachment)
+                .where(
+                    StudyPartnerMessageAttachment.id.in_(payload.attachment_ids),
+                    StudyPartnerMessageAttachment.request_id == request_id,
+                    StudyPartnerMessageAttachment.uploader_user_id == actor.id,
+                    StudyPartnerMessageAttachment.message_id.is_(None),
+                )
+                .with_for_update()
+            )
+        )
+        if {attachment.id for attachment in attachments} != set(payload.attachment_ids):
+            raise HTTPException(422, "One or more chat attachments are not available")
+    message = StudyPartnerMessage(
+        request_id=request_id,
+        sender_user_id=actor.id,
+        content=payload.content,
+        reply_to_message_id=payload.reply_to_message_id,
+    )
     session.add(message)
     session.flush()
+    for attachment in attachments:
+        attachment.message_id = message.id
     notify_student(
         session,
-        recipient_user_id=counterpart_id,
+        recipient_user_id=other_user_id,
         actor_user_id=actor.id,
         kind="STUDY_PARTNER_CHAT_MESSAGE",
         dedupe_key=f"study-chat-message:{message.id}",
@@ -548,7 +972,80 @@ def send_chat_message(request_id: Id, payload: StudyPartnerMessageCreate, sessio
     )
     session.commit()
     session.refresh(message)
-    return message_read(message)
+    other_receipt = receipt_for(session, request_id, other_user_id)
+    return message_read(
+        session,
+        message,
+        actor.id,
+        other_receipt.last_read_message_id if other_receipt else None,
+    )
+
+
+@router.post(
+    "/study-partner/chats/{request_id}/messages/{message_id}/reactions",
+    response_model=StudyPartnerMessageRead,
+)
+def add_message_reaction(
+    request_id: Id,
+    message_id: Id,
+    payload: StudyPartnerMessageReactionWrite,
+    session: DB,
+    actor: Student,
+):
+    message = chat_message_or_404(session, request_id, message_id, actor.id)
+    exists_for_user = session.scalar(
+        select(StudyPartnerMessageReaction.id).where(
+            StudyPartnerMessageReaction.message_id == message.id,
+            StudyPartnerMessageReaction.user_id == actor.id,
+            StudyPartnerMessageReaction.emoji == payload.emoji,
+        )
+    )
+    if exists_for_user is None:
+        session.add(
+            StudyPartnerMessageReaction(
+                message_id=message.id,
+                user_id=actor.id,
+                emoji=payload.emoji,
+            )
+        )
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+    return message_read(
+        session,
+        message,
+        actor.id,
+        counterpart_last_read_message_id(session, request_id, actor.id),
+    )
+
+
+@router.delete(
+    "/study-partner/chats/{request_id}/messages/{message_id}/reactions",
+    response_model=StudyPartnerMessageRead,
+)
+def remove_message_reaction(
+    request_id: Id,
+    message_id: Id,
+    payload: StudyPartnerMessageReactionWrite,
+    session: DB,
+    actor: Student,
+):
+    message = chat_message_or_404(session, request_id, message_id, actor.id)
+    session.execute(
+        delete(StudyPartnerMessageReaction).where(
+            StudyPartnerMessageReaction.message_id == message.id,
+            StudyPartnerMessageReaction.user_id == actor.id,
+            StudyPartnerMessageReaction.emoji == payload.emoji,
+        )
+    )
+    session.commit()
+    return message_read(
+        session,
+        message,
+        actor.id,
+        counterpart_last_read_message_id(session, request_id, actor.id),
+    )
 
 
 def transition_request(session: Session, request_id: int, actor_id: int, action: Literal["accept", "decline", "cancel"]) -> StudyPartnerRequest:
@@ -557,6 +1054,10 @@ def transition_request(session: Session, request_id: int, actor_id: int, action:
         raise HTTPException(404, "Study request not found")
     if action == "cancel" and request.requester_user_id != actor_id:
         raise HTTPException(404, "Study request not found")
+    # Use the same ordered participant locks as request creation and blocking.
+    # This prevents a status transition and a simultaneous block from acquiring
+    # user foreign-key locks in opposite orders during notification creation.
+    lock_pair(session, request.requester_user_id, request.recipient_user_id)
     next_status = {"accept": "ACCEPTED", "decline": "DECLINED", "cancel": "CANCELLED"}[action]
     result = session.execute(
         update(StudyPartnerRequest)

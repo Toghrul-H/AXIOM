@@ -62,7 +62,11 @@ def accounts():
             cookie=response.headers['set-cookie'].split(';')[0]
             return {'id':user.id,'email':user.email,'role':role}, {'Cookie':cookie,'X-CSRF-Token':csrf}
     yield create
-    with Session(get_engine()) as session:
-        session.execute(delete(User).where(User.id.in_(ids)))
-        session.commit()
+    if ids:
+        with Session(get_engine()) as session:
+            from app.announcement_models import CourseAnnouncement
+
+            session.execute(delete(CourseAnnouncement).where(CourseAnnouncement.created_by_id.in_(ids)))
+            session.execute(delete(User).where(User.id.in_(ids)))
+            session.commit()
     _failures.clear()

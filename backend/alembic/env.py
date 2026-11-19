@@ -16,13 +16,18 @@ from app.notification_models import Notification
 target_metadata = Base.metadata
 
 
+def _version_table_schema() -> str | None:
+    """Allow isolated integration schemas to own their Alembic version table."""
+    return context.config.attributes.get("version_table_schema") or get_settings().database_schema or None
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=get_settings().database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table_schema=get_settings().database_schema or None,
+        version_table_schema=_version_table_schema(),
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -34,7 +39,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=supplied_connection,
             target_metadata=target_metadata,
-            version_table_schema=get_settings().database_schema or None,
+            version_table_schema=_version_table_schema(),
         )
         with context.begin_transaction():
             context.run_migrations()
@@ -43,7 +48,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            version_table_schema=get_settings().database_schema or None,
+            version_table_schema=_version_table_schema(),
         )
         with context.begin_transaction():
             context.run_migrations()

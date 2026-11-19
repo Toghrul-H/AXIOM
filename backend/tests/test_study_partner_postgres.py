@@ -55,7 +55,8 @@ def study_partner_schema():
             connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
             config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
             config.attributes["connection"] = connection
-            command.upgrade(config, "0024")
+            config.attributes["version_table_schema"] = schema
+            command.upgrade(config, "head")
         except Exception:
             connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             raise
@@ -64,11 +65,14 @@ def study_partner_schema():
     finally:
         with engine.begin() as connection:
             connection.execute(DropSchema(schema, cascade=True))
+        # search_path is a connection-level setting; discard pooled connections
+        # configured for the disposable schema before unrelated tests run.
+        engine.dispose()
 
 
 def schema_session(schema: str) -> tuple[Session, object]:
     connection = get_engine().connect()
-    connection.execute(text(f'SET search_path TO "{schema}", public'))
+    connection.execute(text(f'SET search_path TO "{schema}"'))
     connection.commit()
     return Session(connection), connection
 
@@ -125,14 +129,17 @@ def test_postgres_course_migration_is_present(study_partner_schema):
     try:
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         config.attributes["connection"] = connection
+        config.attributes["version_table_schema"] = study_partner_schema
         command.downgrade(config, "0023")
         assert connection.execute(text("SELECT to_regclass('course_chapters')")).scalar() is None
         command.upgrade(config, "0024")
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0024"
         chapter = CourseChapter(title="Sets", slug="sets", position=0)
         session.add(chapter)
+        session.flush()
+        chapter_id = chapter.id
         session.commit()
-        assert chapter.id is not None
+        assert chapter_id is not None
     finally:
         session.close()
         connection.close()
@@ -143,7 +150,8 @@ def test_postgres_password_reset_migration_round_trip_and_concurrent_consumption
     try:
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         config.attributes["connection"] = connection
-        command.upgrade(config, "0026")
+        config.attributes["version_table_schema"] = study_partner_schema
+        command.downgrade(config, "0026")
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0026"
         assert connection.execute(text("SELECT to_regclass('password_reset_tokens')")).scalar() == "password_reset_tokens"
         assert connection.execute(text("SELECT to_regclass('password_reset_outbox')")).scalar() == "password_reset_outbox"
@@ -152,7 +160,7 @@ def test_postgres_password_reset_migration_round_trip_and_concurrent_consumption
         command.downgrade(config, "0024")
         assert connection.execute(text("SELECT to_regclass('password_reset_tokens')")).scalar() is None
         command.upgrade(config, "0026")
-        connection.execute(text(f'SET search_path TO "{study_partner_schema}", public'))
+        connection.execute(text(f'SET search_path TO "{study_partner_schema}"'))
         connection.commit()
         user = User(email="reset-race@example.test", password_hash="old", role="STUDENT", email_verified=True)
         session.add(user)
@@ -200,7 +208,8 @@ def test_postgres_reset_outbox_claims_work_once_across_workers(study_partner_sch
     try:
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         config.attributes["connection"] = connection
-        command.upgrade(config, "0026")
+        config.attributes["version_table_schema"] = study_partner_schema
+        command.downgrade(config, "0026")
         user = User(email="outbox-race@example.test", password_hash="old", role="STUDENT", email_verified=True)
         session.add(user)
         session.commit()
@@ -357,6 +366,7 @@ def test_postgres_0023_downgrade_upgrade_round_trip(study_partner_schema):
         connection.execute(text(f'SET LOCAL search_path TO "{study_partner_schema}"'))
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         config.attributes["connection"] = connection
+        config.attributes["version_table_schema"] = study_partner_schema
         command.downgrade(config, "0022")
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
         assert connection.scalar(text("SELECT to_regclass('study_partner_messages')")) is None
