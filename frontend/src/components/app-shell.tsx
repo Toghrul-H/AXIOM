@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth } from "./auth-provider";
 import { Wordmark } from "./wordmark";
 import { NotificationCenter } from "./notification-center";
-import { futureTools } from "@/lib/future-tools";
+import { ThemePreference } from "./theme-preference";
 import { usePathname } from "next/navigation";
 import {
   ArrowUpRight,
@@ -21,6 +21,10 @@ import {
   X,
   UserRound,
   ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
+  MessageCircle,
+  Settings,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -31,6 +35,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const demonstrator = user?.role === "DEMONSTRATOR";
   const teacher = user?.role !== "STUDENT";
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem("axiom-sidebar-collapsed") === "true",
+  );
   const sidebar = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
 
@@ -46,7 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (event.key !== "Tab") return;
       const items = Array.from(
         element?.querySelectorAll<HTMLElement>(
-          "a[href], button:not(:disabled)",
+          "a[href], button:not(:disabled), select:not(:disabled), summary",
         ) ?? [],
       ).filter((item) => item.getClientRects().length > 0);
       const first = items[0];
@@ -97,11 +106,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               },
             ]
           : []),
-        {
-          href: "/student/demonstrator-opportunities",
-          label: "Demonstrator Opportunities",
-          icon: GraduationCap,
-        },
+        ...(user?.is_active
+          ? [
+              {
+                href: "/student/messages",
+                label: "Messages",
+                icon: MessageCircle,
+              },
+            ]
+          : []),
         {
           href: "/student/progress",
           label: "Progress",
@@ -124,10 +137,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     links.push({ href: "/teacher/exams", label: "Exam Builder", icon: Shapes });
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
+      href: "/teacher/announcements",
+      label: "Announcements",
+      icon: MessageCircle,
+    });
+  if (user && ["LECTURER", "ADMIN"].includes(user.role))
+    links.push({
       href: "/teacher/course",
       label: "Course management",
       icon: BookOpen,
     });
+  const mobileLinks = teacher
+    ? [
+        { href: "/teacher", label: "Home", icon: LayoutDashboard },
+        { href: "/teacher/course", label: "Course", icon: BookOpen },
+        { href: "/teacher/quizzes", label: "Practice", icon: Shapes },
+        { href: "/teacher/grading", label: "Grading", icon: BookOpen },
+      ]
+    : [
+        { href: "/student", label: "Home", icon: LayoutDashboard },
+        { href: "/student/course", label: "Course", icon: BookOpen },
+        { href: "/student/practice", label: "Practice", icon: Shapes },
+        user?.is_active
+          ? {
+              href: "/student/messages",
+              label: "Messages",
+              icon: MessageCircle,
+            }
+          : { href: "/student/quizzes", label: "Quizzes", icon: Shapes },
+      ];
+  const isActive = (href: string, label?: string) =>
+    path === href ||
+    (href !== (teacher ? "/teacher" : "/student") &&
+      path.startsWith(`${href}/`)) ||
+    (label === "Question Bank" && path.endsWith("/edit"));
   if (user && ["LECTURER", "ADMIN"].includes(user.role))
     links.push({
       href: "/teacher/practice-sheets",
@@ -145,15 +188,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? "Assessment Documents"
       : undefined) ??
     (path.startsWith("/teacher/exams") ? "Exam Builder" : undefined) ??
+    (path.startsWith("/teacher/announcements") ? "Announcements" : undefined) ??
     (path.startsWith("/teacher/course") ? "Course management" : undefined) ??
     (path.startsWith("/teacher/practice-sheets")
       ? "Practice Sheets"
       : undefined) ??
+    (path.startsWith("/account/profile") ? "Profile" : undefined) ??
+    (path.startsWith("/account/settings") ? "Settings" : undefined) ??
     (path.startsWith("/student/study-partner") ? "Study Partner" : undefined) ??
     (path.startsWith("/student/course") ? "Course" : undefined) ??
     (path.startsWith("/teacher/grading/") ? "Manual Grading" : undefined) ??
     links.find((item) => item.href === path)?.label ??
-    futureTools.find((item) => path === `/teacher/tools/${item.slug}`)?.title ??
     (path.includes("/quizzes/")
       ? "Quiz"
       : path.endsWith("/edit")
@@ -176,7 +221,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside
         id="sidebar-navigation"
         ref={sidebar}
-        className={`sidebar ${open ? "is-open" : ""}`}
+        className={`sidebar ${open ? "is-open" : ""} ${collapsed ? "is-collapsed" : ""}`}
         aria-label="Main navigation"
       >
         <Link
@@ -192,6 +237,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="Close navigation"
         >
           <X size={20} />
+        </button>
+        <button
+          className="sidebar-collapse icon-button"
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          title={collapsed ? "Expand navigation" : "Collapse navigation"}
+          onClick={() =>
+            setCollapsed((current) => {
+              const next = !current;
+              window.localStorage.setItem(
+                "axiom-sidebar-collapsed",
+                String(next),
+              );
+              return next;
+            })
+          }
+        >
+          {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>
         <div className="course-label">
           <span className="course-icon">
@@ -209,34 +271,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               key={href}
               href={href}
               onClick={() => setOpen(false)}
-              className={`nav-link ${path === href || (label === "Question Bank" && path.endsWith("/edit")) ? "active" : ""}`}
-              aria-current={path === href ? "page" : undefined}
+              className={`nav-link ${isActive(href, label) ? "active" : ""}`}
+              aria-current={isActive(href, label) ? "page" : undefined}
+              title={collapsed ? label : undefined}
             >
               <Icon size={19} strokeWidth={1.7} />
-              {label}
-              {path === href && <span className="nav-dot" />}
+              <span className="nav-label">{label}</span>
+              {isActive(href, label) && <span className="nav-dot" />}
             </Link>
           ))}
         </nav>
-        {user && ["LECTURER", "ADMIN"].includes(user.role) && (
-          <section className="future-tools" aria-label="Future teaching tools">
-            <p className="nav-caption">TOOLS · IN DEVELOPMENT</p>
-            {futureTools.map(({ slug, title }) => (
-              <Link
-                className={`future-tool nav-link ${path === `/teacher/tools/${slug}` ? "active" : ""}`}
-                key={slug}
-                href={`/teacher/tools/${slug}`}
-                onClick={() => setOpen(false)}
-                aria-current={
-                  path === `/teacher/tools/${slug}` ? "page" : undefined
-                }
-              >
-                <span>{title}</span>
-                <small>Coming soon</small>
-              </Link>
-            ))}
-          </section>
-        )}
         {!teacher && (
           <section className="sidebar-course" aria-label="Course topics">
             <p className="nav-caption">COURSE</p>
@@ -299,7 +343,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <details className="account-control">
               <summary>
                 <span className="account-avatar">
-                  <UserRound size={17} />
+                  {user?.email
+                    .split("@", 1)[0]
+                    .replace(/[^a-z0-9]/gi, "")
+                    .slice(0, 2)
+                    .toUpperCase() || "A"}
                 </span>
                 <span className="account-label">
                   My account<span>{user?.role}</span>
@@ -309,6 +357,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="account-menu">
                 <strong>{user?.email}</strong>
                 <span className="role-chip">{user?.role}</span>
+                <Link
+                  className="button button-secondary"
+                  href="/account/profile"
+                >
+                  Profile
+                </Link>
+                <Link
+                  className="button button-secondary"
+                  href="/account/settings"
+                >
+                  <Settings size={15} /> Settings
+                </Link>
+                <ThemePreference />
                 {user?.role === "STUDENT" && (
                   <Link
                     className="button button-secondary"
@@ -344,6 +405,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Sparkles size={12} /> AXIOM · Discrete Mathematics
           </span>
         </footer>
+        <nav className="mobile-bottom-nav" aria-label="Quick navigation">
+          {mobileLinks.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={isActive(href) ? "active" : ""}
+            >
+              <Icon size={19} aria-hidden="true" />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </nav>
       </div>
     </div>
   );
