@@ -9,6 +9,7 @@ import {
   ProgressEmpty,
   ProgressCoverage,
 } from "./progress-panels";
+import { WeeklyActivity } from "./weekly-activity";
 export function StudentProgress() {
   const { data, error, retry } = useProgress();
   return (
@@ -28,6 +29,7 @@ export function StudentProgress() {
           </div>
           <ProgressOverview data={data} detailed />
           {data.overview.completed_attempts === 0 && <ProgressEmpty />}
+          <WeeklyActivity activity={data.weekly_activity} />
           <section className="panel topic-performance">
             <div className="panel-heading">
               <h2>Performance by topic</h2>

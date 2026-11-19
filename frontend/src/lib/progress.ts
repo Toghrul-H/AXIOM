@@ -26,4 +26,5 @@ export type ProgressData = {
     objective_score: number;
     objective_total: number;
   })[];
+  weekly_activity: { date: string; completed_attempts: number }[];
 };

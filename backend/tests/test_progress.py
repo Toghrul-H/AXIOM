@@ -40,6 +40,8 @@ def test_progress_empty(accounts):
         assert len(data['topics']) == 7 and len(data['skills']) == 8
         assert all(x['accuracy_percent'] is None and x['answered_count'] == 0 for x in data['topics'] + data['skills'])
         assert data['recent_attempts'] == []
+        assert len(data['weekly_activity']) == 7
+        assert all(day['completed_attempts'] == 0 for day in data['weekly_activity'])
 
 
 def test_progress_history_ownership_and_snapshots(setup):
@@ -74,6 +76,8 @@ def test_progress_history_ownership_and_snapshots(setup):
     assert definition['accuracy_percent'] == 66.67
     assert {a['id'] for a in data['recent_attempts']} == set(ids)
     assert all(a['total_question_count'] == 5 and a['objective_score'] == 4 and a['objective_total'] == 11 for a in data['recent_attempts'])
+    assert len(data['weekly_activity']) == 7
+    assert sum(day['completed_attempts'] for day in data['weekly_activity']) == 2
     assert c.get(URL+'?user_id=999999', headers=h).json() == data
     other = c.get(URL, headers=c.stranger_headers).json()
     assert other['overview']['completed_attempts'] == 1

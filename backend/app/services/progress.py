@@ -1,10 +1,11 @@
 """Read-only practice analytics from immutable attempt snapshots, never Question."""
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from app.models import Topic, SkillType
 from app.quiz_models import QuizAttempt, AttemptAnswer
 from app.progress_schemas import (
-    Performance, TopicPerformance, SkillPerformance, Overview, RecentAttempt, ProgressRead,
+    Performance, TopicPerformance, SkillPerformance, Overview, RecentAttempt, ProgressRead, WeeklyActivity,
 )
 
 TOPICS = ('logic', 'sets', 'binary-relations', 'functions', 'complex-numbers', 'combinatorics', 'graphs')
@@ -44,7 +45,14 @@ def progress_for(session: Session, user_id: int) -> ProgressRead:
         .order_by(QuizAttempt.submitted_at.desc(), QuizAttempt.id.desc())
     ).all()
     recent = []
+    today = datetime.now(timezone.utc).date()
+    weekly = {today - timedelta(days=offset): 0 for offset in range(6, -1, -1)}
     for attempt in attempts:
+        submitted_at = attempt.submitted_at
+        if submitted_at is not None:
+            attempt_day = submitted_at.astimezone(timezone.utc).date() if submitted_at.tzinfo else submitted_at.date()
+            if attempt_day in weekly:
+                weekly[attempt_day] += 1
         result = Performance()
         for item in attempt.items:
             values = counts(item)
@@ -64,4 +72,5 @@ def progress_for(session: Session, user_id: int) -> ProgressRead:
             auto_graded_accuracy=total.accuracy_percent),
         topics=list(topics.values()), skills=list(skills.values()),
         unattributed_topic=unknown_topic, unattributed_skill=unknown_skill, recent_attempts=recent,
+        weekly_activity=[WeeklyActivity(date=day.isoformat(), completed_attempts=count) for day, count in weekly.items()],
     )

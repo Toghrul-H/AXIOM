@@ -40,6 +40,11 @@ class RecentAttempt(Performance):
     objective_total: int
 
 
+class WeeklyActivity(Schema):
+    date: str
+    completed_attempts: int = Field(ge=0)
+
+
 class ProgressRead(Schema):
     overview: Overview
     topics: list[TopicPerformance]
@@ -47,3 +52,4 @@ class ProgressRead(Schema):
     unattributed_topic: Performance
     unattributed_skill: Performance
     recent_attempts: list[RecentAttempt]
+    weekly_activity: list[WeeklyActivity]
