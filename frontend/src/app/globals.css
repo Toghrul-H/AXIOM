@@ -151,6 +151,7 @@
   --color-green: #10b981;
   --color-amber: #f59e0b;
   --color-danger: #dc2626;
+  --text-danger: #b91c1c;
   --background: #f5f7fc;
   --surface: #f5f7fc;
   --surface-raised: #ffffff;
@@ -170,6 +171,7 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
   --ink: var(--text-primary);
@@ -185,6 +187,7 @@
   --text-primary: #eef4ff;
   --text-muted: #b7c5dc;
   --text-on-primary: #ffffff;
+  --text-danger: #fecaca;
   --border: #2b4265;
   --border-strong: #466187;
   --focus-ring: #7db2ff;

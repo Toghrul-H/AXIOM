@@ -1417,13 +1417,12 @@ export function PracticeSheetBuilder() {
           )}
           <div
             className="exam-pdf-kind-tabs"
-            role="tablist"
+            role="group"
             aria-label="PDF type"
           >
             <button
               type="button"
-              role="tab"
-              aria-selected={workspacePreviewKind === "sheet"}
+              aria-pressed={workspacePreviewKind === "sheet"}
               className={workspacePreviewKind === "sheet" ? "active" : ""}
               onClick={() => setWorkspacePreviewKind("sheet")}
             >
@@ -1431,8 +1430,7 @@ export function PracticeSheetBuilder() {
             </button>
             <button
               type="button"
-              role="tab"
-              aria-selected={workspacePreviewKind === "answer-key"}
+              aria-pressed={workspacePreviewKind === "answer-key"}
               className={workspacePreviewKind === "answer-key" ? "active" : ""}
               onClick={() => setWorkspacePreviewKind("answer-key")}
             >
@@ -1480,8 +1478,6 @@ export function PracticeSheetBuilder() {
       {confirmingFinalization && (
         <section
           className="panel exam-confirmation"
-          role="alertdialog"
-          aria-modal="true"
           aria-labelledby="finalize-title"
         >
           <h2 id="finalize-title">Finalize this practice sheet?</h2>

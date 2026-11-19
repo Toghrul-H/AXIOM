@@ -1220,7 +1220,6 @@ input[type="radio"] {
 :root {
   --deep-navy: #152b49;
   --warm-beige: #eae0ce;
-  --border: #c79a43;
 }
 .wordmark-logo {
   width: 174px;
@@ -2125,7 +2124,7 @@ label,
   color: var(--text-muted);
 }
 [role="alert"] {
-  color: var(--color-danger);
+  color: var(--text-danger);
 }
 .theme-preference {
   display: grid;
@@ -2147,6 +2146,17 @@ label,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Phase 8 shared polish: semantic feedback and focus must work in both themes. */
+:focus-visible {
+  outline-color: var(--focus-ring);
+}
+.panel.error-state,
+.error-message {
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--border));
+  color: var(--text-danger);
 }
 
 /* Phase 2 navigation and account foundations. */
@@ -3145,5 +3155,40 @@ label,
   }
   .pdf-workspace-preview-frame {
     min-height: 390px;
+  }
+}
+
+/* Phase 8.2: retain safe touch targets without changing desktop density. */
+@media (max-width: 760px) {
+  .course-workspace-tabs button,
+  .view-toggle button,
+  .exam-pdf-kind-tabs button,
+  .study-partner-reaction,
+  .study-partner-reply-action {
+    min-height: 44px;
+  }
+  .quiz-question-nav {
+    flex-basis: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+  .study-partner-attachment-actions a {
+    align-items: center;
+    display: inline-flex;
+    min-height: 44px;
+  }
+}
+@media (max-width: 480px) {
+  .delete-dialog {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .dialog-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  .dialog-actions .button {
+    width: 100%;
   }
 }

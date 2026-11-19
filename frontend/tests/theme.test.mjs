@@ -8,6 +8,14 @@ const source = readFileSync(
   new URL("../src/lib/theme.ts", import.meta.url),
   "utf8",
 );
+const globalStyles = readFileSync(
+  new URL("../src/app/globals.css", import.meta.url),
+  "utf8",
+);
+const axiomStyles = readFileSync(
+  new URL("../src/app/axiom.css", import.meta.url),
+  "utf8",
+);
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.CommonJS,
@@ -32,4 +40,21 @@ test("theme controls use the persisted appearance key and system media query", (
   );
   assert.match(control, /localStorage\.setItem/);
   assert.match(control, /matchMedia\("\(prefers-color-scheme: dark\)"\)/);
+});
+
+test("shared styling keeps spacing, focus, and error feedback theme-safe", () => {
+  assert.match(globalStyles, /--space-5: 20px/);
+  assert.match(
+    globalStyles,
+    /:root\[data-theme="dark"\][\s\S]*--focus-ring: #7db2ff/,
+  );
+  assert.match(
+    globalStyles,
+    /:root\[data-theme="dark"\][\s\S]*--text-danger: #fecaca/,
+  );
+  assert.match(
+    axiomStyles,
+    /:focus-visible\s*\{\s*outline-color: var\(--focus-ring\)/,
+  );
+  assert.match(axiomStyles, /\.panel\.error-state,[\s\S]*\.error-message/);
 });

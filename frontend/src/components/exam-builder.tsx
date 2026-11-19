@@ -976,13 +976,12 @@ export function ExamBuilder() {
         <aside className="exam-pdf-workspace" aria-label="Exam PDF preview">
           <div
             className="exam-pdf-kind-tabs"
-            role="tablist"
+            role="group"
             aria-label="PDF type"
           >
             <button
               type="button"
-              role="tab"
-              aria-selected={workspacePreviewKind === "exam"}
+              aria-pressed={workspacePreviewKind === "exam"}
               className={workspacePreviewKind === "exam" ? "active" : ""}
               onClick={() => setWorkspacePreviewKind("exam")}
             >
@@ -990,8 +989,7 @@ export function ExamBuilder() {
             </button>
             <button
               type="button"
-              role="tab"
-              aria-selected={workspacePreviewKind === "answer-key"}
+              aria-pressed={workspacePreviewKind === "answer-key"}
               className={workspacePreviewKind === "answer-key" ? "active" : ""}
               onClick={() => setWorkspacePreviewKind("answer-key")}
             >
@@ -1023,8 +1021,6 @@ export function ExamBuilder() {
       {confirmingFinalization && (
         <section
           className="panel exam-confirmation"
-          role="alertdialog"
-          aria-modal="true"
           aria-labelledby="finalize-title"
         >
           <h2 id="finalize-title">Finalize this exam?</h2>
