@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 import {
@@ -22,8 +22,8 @@ import { orderedTopics, useMetadata } from "@/lib/use-metadata";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import { QuestionFilters } from "./question-filters";
-import { MathText } from "./math-text";
 import { PdfPreviewDialog } from "./pdf-preview-dialog";
+import { PdfPreviewPanel } from "./pdf-preview-panel";
 
 const PAGE_SIZE = 20;
 const emptyDraft = () => ({
@@ -51,10 +51,6 @@ export function ExamBuilder() {
   const [draft, setDraft] = useState(emptyDraft);
   const [savedSignature, setSavedSignature] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [previewQuestions, setPreviewQuestions] = useState<
-    Map<number, Question>
-  >(() => new Map());
-  const requestedPreviewQuestionIds = useRef(new Set<number>());
   const [filters, setFilters] = useState<Filters>({});
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -73,6 +69,9 @@ export function ExamBuilder() {
   const [previewKind, setPreviewKind] = useState<"exam" | "answer-key" | null>(
     null,
   );
+  const [workspacePreviewKind, setWorkspacePreviewKind] = useState<
+    "exam" | "answer-key"
+  >("exam");
   const { metadata, error: metadataError } = useMetadata();
   const readOnly = draft.status === "finalized";
   const dirty =
@@ -104,11 +103,6 @@ export function ExamBuilder() {
       .list(offset, PAGE_SIZE, controller.signal, filters)
       .then((page) => {
         setQuestions(page.items);
-        setPreviewQuestions((current) => {
-          const next = new Map(current);
-          page.items.forEach((question) => next.set(question.id, question));
-          return next;
-        });
         setTotal(page.total);
         setLoadingQuestions(false);
       })
@@ -120,33 +114,6 @@ export function ExamBuilder() {
       });
     return () => controller.abort();
   }, [filters, offset]);
-
-  useEffect(() => {
-    const missing = draft.entries
-      .map((entry) => entry.question_id)
-      .filter(
-        (id) =>
-          !previewQuestions.has(id) &&
-          !requestedPreviewQuestionIds.current.has(id),
-      );
-    if (!missing.length) return;
-    missing.forEach((id) => requestedPreviewQuestionIds.current.add(id));
-    const controller = new AbortController();
-    void Promise.all(
-      missing.map((id) => questionsApi.get(String(id), controller.signal)),
-    )
-      .then((items) => {
-        setPreviewQuestions((current) => {
-          const next = new Map(current);
-          items.forEach((question) => next.set(question.id, question));
-          return next;
-        });
-      })
-      .catch(() => {
-        missing.forEach((id) => requestedPreviewQuestionIds.current.delete(id));
-      });
-    return () => controller.abort();
-  }, [draft.entries, previewQuestions]);
 
   const questionById = useMemo(
     () => new Map(questions.map((question) => [question.id, question])),
@@ -204,9 +171,6 @@ export function ExamBuilder() {
       draft.entries.some((entry) => entry.question_id === question.id)
     )
       return;
-    setPreviewQuestions((current) =>
-      new Map(current).set(question.id, question),
-    );
     replaceEntries([
       ...draft.entries,
       { question_id: question.id, points: 1, position: draft.entries.length },
@@ -1009,78 +973,51 @@ export function ExamBuilder() {
             </div>
           </aside>
         </section>
-        <aside className="exam-preview-pane" aria-label="Live exam preview">
-          <header className="exam-preview-toolbar">
-            <h2>Draft Preview</h2>
-            <p className="draft-save-state" role="status">
-              {readOnly
-                ? "Finalized exam — read-only preview"
-                : dirty
-                  ? "Unsaved changes — preview only"
-                  : "Saved draft"}
-            </p>
-            <p>PDF output remains authoritative.</p>
-          </header>
+        <aside className="exam-pdf-workspace" aria-label="Exam PDF preview">
           <div
-            className="exam-preview-scroll"
-            tabIndex={0}
-            aria-label="Scrollable exam preview"
+            className="exam-pdf-kind-tabs"
+            role="tablist"
+            aria-label="PDF type"
           >
-            <article className="draft-paper exam-paper">
-              <header className="exam-paper-heading">
-                <strong>AXIOM</strong>
-                <h2>Discrete Mathematics I</h2>
-                <h3>{draft.title.trim() || "Untitled Exam"}</h3>
-              </header>
-              <p className="practice-sheet-identity">
-                <strong>Name:</strong> ____________________{" "}
-                <strong>Neptun code:</strong> ____________{" "}
-                <strong>Date:</strong> ____________
-              </p>
-              <p className="exam-preview-total">
-                <strong>Total available points:</strong> {totalPoints}
-              </p>
-              {draft.instructions.trim() && (
-                <p className="draft-paragraph">
-                  <MathText text={draft.instructions} />
-                </p>
-              )}
-              {draft.entries.length === 0 ? (
-                <p className="field-hint">
-                  Add questions to see the printable exam draft.
-                </p>
-              ) : (
-                <ol className="exam-preview-questions">
-                  {draft.entries.map((entry, index) => {
-                    const question = previewQuestions.get(entry.question_id);
-                    return (
-                      <li key={entry.question_id}>
-                        <div className="practice-sheet-question-heading">
-                          <strong>Question {index + 1}</strong>
-                          <span>{entry.points} points</span>
-                        </div>
-                        {question ? (
-                          <MathText text={question.question_text} />
-                        ) : (
-                          <span className="field-hint">
-                            Loading question {entry.question_id}…
-                          </span>
-                        )}
-                        <div
-                          className={
-                            question?.response_type === "FREE_RESPONSE"
-                              ? "exam-preview-answer-space exam-preview-answer-space-large"
-                              : "exam-preview-answer-space"
-                          }
-                          aria-hidden="true"
-                        />
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </article>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspacePreviewKind === "exam"}
+              className={workspacePreviewKind === "exam" ? "active" : ""}
+              onClick={() => setWorkspacePreviewKind("exam")}
+            >
+              Student exam
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspacePreviewKind === "answer-key"}
+              className={workspacePreviewKind === "answer-key" ? "active" : ""}
+              onClick={() => setWorkspacePreviewKind("answer-key")}
+            >
+              Answer key
+            </button>
           </div>
+          <PdfPreviewPanel
+            key={`exam:${draft.id ?? "new"}:${workspacePreviewKind}:${dirty ? "dirty" : savedSignature}`}
+            title={
+              workspacePreviewKind === "exam"
+                ? "Student exam PDF"
+                : "Exam answer key PDF"
+            }
+            disabled={draft.id === null || dirty || downloading !== null}
+            disabledMessage={
+              draft.id === null
+                ? "Save the draft before generating its authoritative PDF."
+                : dirty
+                  ? "Save changes before previewing so this PDF matches the current draft."
+                  : "Another document is being prepared."
+            }
+            loadPdf={(signal) =>
+              getExamPdf(draft.id!, workspacePreviewKind, signal)
+            }
+            onFullscreen={() => preview(workspacePreviewKind)}
+          />
         </aside>
       </section>
       {confirmingFinalization && (

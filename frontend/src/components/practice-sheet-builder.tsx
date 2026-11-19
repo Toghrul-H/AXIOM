@@ -28,8 +28,8 @@ import { orderedTopics, useMetadata } from "@/lib/use-metadata";
 import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
 import { QuestionFilters } from "./question-filters";
-import { MathText } from "./math-text";
 import { PdfPreviewDialog } from "./pdf-preview-dialog";
+import { PdfPreviewPanel } from "./pdf-preview-panel";
 
 const PAGE_SIZE = 20;
 const emptyDraft = () => ({
@@ -91,6 +91,12 @@ export function PracticeSheetBuilder() {
     variantId: number;
     kind: "sheet" | "answer-key";
   } | null>(null);
+  const [workspaceVariantId, setWorkspaceVariantId] = useState<number | null>(
+    null,
+  );
+  const [workspacePreviewKind, setWorkspacePreviewKind] = useState<
+    "sheet" | "answer-key"
+  >("sheet");
   const [draggedQuestionId, setDraggedQuestionId] = useState<number | null>(
     null,
   );
@@ -98,6 +104,10 @@ export function PracticeSheetBuilder() {
   const readOnly = draft.status === "finalized";
   const dirty =
     draft.id !== null && !readOnly && signature(draft) !== savedSignature;
+  const workspaceVariant =
+    draft.variants.find((variant) => variant.id === workspaceVariantId) ??
+    draft.variants[0] ??
+    null;
 
   const fetchSheets = () => {
     void practiceSheetsApi
@@ -1385,123 +1395,86 @@ export function PracticeSheetBuilder() {
           </section>
         </div>
         <aside
-          className="practice-sheet-preview-pane"
-          aria-label="Live practice sheet preview"
+          className="exam-pdf-workspace practice-sheet-pdf-workspace"
+          aria-label="Practice sheet PDF preview"
         >
-          <header className="practice-sheet-preview-toolbar">
-            <h2>Draft Preview</h2>
-            <p className="draft-save-state" role="status">
-              {readOnly
-                ? "Finalized sheet — read-only preview"
-                : dirty
-                  ? "Unsaved changes — preview only"
-                  : "Saved draft"}
-            </p>
-            <p>
-              This HTML preview follows the current editor. PDF output remains
-              authoritative.
-            </p>
-          </header>
+          {draft.variants.length > 1 && (
+            <label className="practice-sheet-preview-variant">
+              Variant
+              <select
+                value={workspaceVariant?.id ?? ""}
+                onChange={(event) =>
+                  setWorkspaceVariantId(Number(event.target.value))
+                }
+              >
+                {draft.variants.map((variant) => (
+                  <option key={variant.id} value={variant.id}>
+                    Version {variant.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div
-            className="practice-sheet-preview-scroll"
-            tabIndex={0}
-            aria-label="Scrollable practice sheet preview"
+            className="exam-pdf-kind-tabs"
+            role="tablist"
+            aria-label="PDF type"
           >
-            <article
-              className={`draft-paper practice-sheet-paper practice-sheet-margins-${draft.documentSettings.layout.margins}`}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspacePreviewKind === "sheet"}
+              className={workspacePreviewKind === "sheet" ? "active" : ""}
+              onClick={() => setWorkspacePreviewKind("sheet")}
             >
-              <header className="practice-sheet-paper-heading">
-                {draft.documentSettings.header.logo_visible && (
-                  <span
-                    className="practice-logo-unavailable"
-                    title="No approved local logo asset is configured"
-                  >
-                    Logo unavailable
-                  </span>
-                )}
-                <strong>
-                  {draft.documentSettings.header.institution_name}
-                </strong>
-                <h2>{draft.documentSettings.header.course_name}</h2>
-                <h3>{draft.title.trim() || "Untitled Practice Sheet"}</h3>
-                {(draft.documentSettings.header.instructor_name ||
-                  draft.documentSettings.header.document_date) && (
-                  <p>
-                    {draft.documentSettings.header.instructor_name &&
-                      `Instructor: ${draft.documentSettings.header.instructor_name}`}
-                    {draft.documentSettings.header.instructor_name &&
-                      draft.documentSettings.header.document_date &&
-                      " · "}
-                    {draft.documentSettings.header.document_date &&
-                      `Date: ${draft.documentSettings.header.document_date}`}
-                  </p>
-                )}
-                <p>Draft question pool</p>
-              </header>
-              <p className="practice-sheet-identity">
-                <strong>Name:</strong> ____________________{" "}
-                <strong>Neptun code:</strong> ____________{" "}
-                <strong>Date:</strong> ____________
-              </p>
-              {draft.instructions.trim() && (
-                <p className="draft-paragraph">
-                  <MathText text={draft.instructions} />
-                </p>
-              )}
-              {draft.entries.length === 0 ? (
-                <p className="field-hint">
-                  Add questions to see the printable draft.
-                </p>
-              ) : (
-                <ol
-                  className={`practice-sheet-preview-questions practice-sheet-spacing-${draft.documentSettings.layout.question_spacing} ${draft.documentSettings.questions.numbering_enabled ? "" : "practice-sheet-no-numbering"}`}
-                >
-                  {draft.entries.map((entry, index) => {
-                    const question = questionById.get(entry.question_id);
-                    const pageBreak =
-                      draft.documentSettings.questions.page_break_before_question_ids.includes(
-                        entry.question_id,
-                      );
-                    return (
-                      <li
-                        key={entry.question_id}
-                        className={
-                          pageBreak ? "practice-sheet-page-break" : undefined
-                        }
-                      >
-                        {pageBreak && (
-                          <span className="practice-sheet-page-break-label">
-                            Page break before this question
-                          </span>
-                        )}
-                        <div className="practice-sheet-question-heading">
-                          {draft.documentSettings.questions
-                            .numbering_enabled && (
-                            <strong>Question {index + 1}</strong>
-                          )}
-                          {draft.documentSettings.questions.show_points &&
-                            entry.points !== null && (
-                              <span>{entry.points} points</span>
-                            )}
-                        </div>
-                        {question ? (
-                          <MathText text={question.question_text} />
-                        ) : (
-                          <span className="field-hint">
-                            Loading question {entry.question_id}…
-                          </span>
-                        )}
-                        <div
-                          className={`practice-sheet-answer-space practice-sheet-answer-space-${draft.documentSettings.questions.answer_space}`}
-                          aria-hidden="true"
-                        />
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </article>
+              Student sheet
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspacePreviewKind === "answer-key"}
+              className={workspacePreviewKind === "answer-key" ? "active" : ""}
+              onClick={() => setWorkspacePreviewKind("answer-key")}
+            >
+              Answer key
+            </button>
           </div>
+          <PdfPreviewPanel
+            key={`practice-sheet:${draft.id ?? "new"}:${workspaceVariant?.id ?? "none"}:${workspacePreviewKind}:${dirty ? "dirty" : savedSignature}`}
+            title={
+              workspacePreviewKind === "sheet"
+                ? "Student practice sheet PDF"
+                : "Practice sheet answer key PDF"
+            }
+            disabled={
+              draft.id === null ||
+              workspaceVariant === null ||
+              dirty ||
+              downloading !== null ||
+              exportingLatex !== null
+            }
+            disabledMessage={
+              draft.id === null
+                ? "Save the draft before generating variants and PDFs."
+                : workspaceVariant === null
+                  ? "Generate a variant before previewing its PDF."
+                  : dirty
+                    ? "Save changes before previewing so this PDF matches the current draft."
+                    : "Another document is being prepared."
+            }
+            loadPdf={(signal) =>
+              getPracticeSheetPdf(
+                draft.id!,
+                workspaceVariant!.id,
+                workspacePreviewKind,
+                signal,
+              )
+            }
+            onFullscreen={() =>
+              workspaceVariant &&
+              preview(workspaceVariant.id, workspacePreviewKind)
+            }
+          />
         </aside>
       </section>
       {confirmingFinalization && (

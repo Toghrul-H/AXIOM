@@ -2401,6 +2401,47 @@ label,
   }
 }
 
+.practice-sheet-workspace {
+  align-items: start;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+}
+.practice-sheet-workspace .practice-sheet-editor-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+.practice-sheet-preview-variant {
+  align-items: center;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  display: flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: var(--space-2);
+  padding: 10px var(--space-4);
+}
+.practice-sheet-preview-variant select {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  margin-left: auto;
+  max-width: 180px;
+  padding: 6px 8px;
+}
+@media (min-width: 1100px) {
+  .practice-sheet-workspace {
+    grid-template-columns: minmax(0, 1.1fr) minmax(400px, 0.9fr);
+  }
+}
+@media (max-width: 1099px) {
+  .practice-sheet-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
 .bank-toolbar-actions,
 .view-toggle,
 .question-table-actions {
@@ -2667,5 +2708,124 @@ label,
   }
   .recruitment-applications-table {
     min-width: 720px;
+  }
+}
+
+/* Phase 6: keep the editor and the authoritative document in two calm panes. */
+.exam-builder-workspace {
+  align-items: start;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+}
+.exam-builder-workspace .exam-builder-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+.exam-pdf-workspace {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  overflow: hidden;
+}
+.exam-pdf-kind-tabs {
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+}
+.exam-pdf-kind-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  padding: 9px 10px;
+}
+.exam-pdf-kind-tabs button.active {
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-primary);
+}
+.pdf-workspace-preview {
+  display: grid;
+  grid-template-rows: auto minmax(360px, 1fr) auto;
+  max-height: calc(100dvh - 130px);
+  min-height: 620px;
+}
+.pdf-workspace-preview-toolbar,
+.pdf-workspace-preview-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  padding: var(--space-4);
+}
+.pdf-workspace-preview-toolbar {
+  border-bottom: 1px solid var(--border);
+}
+.pdf-workspace-preview-toolbar .eyebrow,
+.pdf-workspace-preview-toolbar h2 {
+  margin: 0;
+}
+.pdf-workspace-preview-toolbar h2 {
+  font-size: 1.05rem;
+}
+.pdf-workspace-preview-body {
+  align-items: center;
+  background: var(--surface-subtle);
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3);
+}
+.pdf-workspace-preview-frame {
+  background: #fff;
+  border: 1px solid var(--border);
+  display: block;
+  height: 100%;
+  min-height: 500px;
+  width: 100%;
+}
+.pdf-workspace-preview-actions {
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+@media (min-width: 1100px) {
+  .exam-builder-workspace {
+    grid-template-columns: minmax(0, 1.1fr) minmax(400px, 0.9fr);
+  }
+}
+@media (max-width: 1099px) {
+  .exam-builder-workspace {
+    grid-template-columns: 1fr;
+  }
+  .pdf-workspace-preview {
+    max-height: 76dvh;
+    min-height: 540px;
+  }
+}
+@media (max-width: 560px) {
+  .exam-pdf-kind-tabs,
+  .pdf-workspace-preview-toolbar,
+  .pdf-workspace-preview-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pdf-workspace-preview-actions .button,
+  .pdf-workspace-preview-toolbar .button {
+    width: 100%;
+  }
+  .pdf-workspace-preview {
+    min-height: 470px;
+  }
+  .pdf-workspace-preview-frame {
+    min-height: 390px;
   }
 }
