@@ -2,13 +2,14 @@
 
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from fastapi import HTTPException, Response
 from pydantic import ValidationError
-from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine, select, text
+from sqlalchemy import JSON, MetaData, UniqueConstraint, create_engine, func, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -26,17 +27,25 @@ from app.routers.study_partner import (
     cancel_request,
     chat_messages,
     chats,
+    add_message_reaction,
     create_block,
     create_request,
+    delete_pending_chat_attachment,
+    download_chat_attachment,
     decline_request,
     get_my_profile,
+    mark_chat_read,
     partners,
     put_my_profile,
     requests,
+    remove_message_reaction,
     send_chat_message,
+    update_chat_typing,
+    upload_chat_attachment_bytes,
 )
-from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerRequest, StudyPartnerTopic
-from app.study_partner_schemas import StudyPartnerBlockCreate, StudyPartnerMessageCreate, StudyPartnerProfileWrite, StudyPartnerRequestCreate
+from app.study_partner_models import StudyPartnerAvailability, StudyPartnerBlock, StudyPartnerChatReceipt, StudyPartnerMessageAttachment, StudyPartnerMessageReaction, StudyPartnerRequest, StudyPartnerTopic
+from app.study_partner_schemas import StudyPartnerBlockCreate, StudyPartnerChatReadWrite, StudyPartnerChatTypingWrite, StudyPartnerMessageCreate, StudyPartnerMessageReactionWrite, StudyPartnerProfileWrite, StudyPartnerRequestCreate
+from app.services.course_material_storage import StorageOperationError
 
 
 def setup():
@@ -85,6 +94,31 @@ def profile_payload(name: str, topic_id: int, **overrides) -> StudyPartnerProfil
 
 def cookie_request(cookie: str, method: str = "PUT") -> Request:
     return Request({"type": "http", "method": method, "headers": [(b"cookie", cookie.encode())]})
+
+
+class FakeChatStorage:
+    def __init__(self, fail_put: bool = False):
+        self.fail_put = fail_put
+        self.objects: dict[str, bytes] = {}
+        self.deleted: list[str] = []
+
+    def new_key(self) -> str:
+        return "axiom-material-chat-test"
+
+    def put(self, key, file) -> str:
+        if self.fail_put:
+            raise StorageOperationError("failed")
+        self.objects[key] = file.content
+        return key
+
+    def get(self, key, *, max_bytes: int) -> bytes:
+        if key not in self.objects or len(self.objects[key]) > max_bytes:
+            raise StorageOperationError("missing")
+        return self.objects[key]
+
+    def delete(self, key) -> None:
+        self.deleted.append(key)
+        self.objects.pop(key, None)
 
 
 def test_profile_opt_in_validation_student_authorization_and_csrf():
@@ -163,6 +197,13 @@ def test_study_partner_routes_are_registered():
         "/study-partner/blocks/{user_id}",
         "/study-partner/chats",
         "/study-partner/chats/{request_id}/messages",
+        "/study-partner/chats/{request_id}/messages/{message_id}/reactions",
+        "/study-partner/chats/{request_id}/read",
+        "/study-partner/chats/{request_id}/typing",
+        "/study-partner/chats/{request_id}/attachments",
+        "/study-partner/chats/{request_id}/attachments/{attachment_id}",
+        "/study-partner/chats/{request_id}/attachments/{attachment_id}/download",
+        "/study-partner/chats/{request_id}/attachments/{attachment_id}/preview",
     } <= paths
 
 
@@ -377,6 +418,12 @@ def test_pending_pair_constraint_and_migration_chain():
     script = ScriptDirectory.from_config(config)
     revision = script.get_revision("0023")
     assert revision is not None and revision.down_revision == "0022"
+    reaction_revision = script.get_revision("0031")
+    assert reaction_revision is not None and reaction_revision.down_revision == "0030"
+    receipt_revision = script.get_revision("0032")
+    assert receipt_revision is not None and receipt_revision.down_revision == "0031"
+    attachment_revision = script.get_revision("0033")
+    assert attachment_revision is not None and attachment_revision.down_revision == "0032"
 
 
 def test_accepted_participants_can_exchange_paginated_private_messages():
@@ -404,6 +451,8 @@ def test_accepted_participants_can_exchange_paginated_private_messages():
                 "counterpart": {"profile_id": partner.id, "display_name": "Bela"},
                 "last_message_preview": "Hi Ada, let us study sets.",
                 "last_message_at": second["created_at"],
+                "unread_count": 1,
+                "counterpart_typing": False,
             }
         ]
         assert "email" not in str(listing).lower() and "neptun" not in str(listing).lower()
@@ -473,5 +522,208 @@ def test_chat_rejects_inactive_requests_blocks_and_invalid_content():
         for content in ("   ", "x" * 2001, "text\x01"):
             with pytest.raises(ValidationError):
                 StudyPartnerMessageCreate(content=content)
+    finally:
+        session.close()
+
+
+def test_chat_reactions_are_unique_per_user_and_replies_stay_in_conversation():
+    session, student, partner, third, _, _, topic, _ = setup()
+    try:
+        for user, name in ((student, "Ada"), (partner, "Bela"), (third, "Csilla")):
+            put_my_profile(profile_payload(name, topic.id), session, user)
+        request = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        accept_request(request["id"], session, partner)
+        original = send_chat_message(request["id"], StudyPartnerMessageCreate(content="Original message"), session, student)
+        reply = send_chat_message(
+            request["id"],
+            StudyPartnerMessageCreate(content="Reply message", reply_to_message_id=original["id"]),
+            session,
+            partner,
+        )
+        assert reply["reply_to_message_id"] == original["id"]
+        assert reply["reply_to"] == {
+            "id": original["id"],
+            "sender_user_id": student.id,
+            "content": "Original message",
+        }
+
+        thumbs_up = StudyPartnerMessageReactionWrite(emoji="👍")
+        first = add_message_reaction(request["id"], original["id"], thumbs_up, session, student)
+        assert first["reactions"] == [{"emoji": "👍", "count": 1, "reacted_by_me": True}]
+        second = add_message_reaction(request["id"], original["id"], thumbs_up, session, partner)
+        assert second["reactions"] == [{"emoji": "👍", "count": 2, "reacted_by_me": True}]
+        duplicate = add_message_reaction(request["id"], original["id"], thumbs_up, session, student)
+        assert duplicate["reactions"] == [{"emoji": "👍", "count": 2, "reacted_by_me": True}]
+        assert session.scalar(select(func.count(StudyPartnerMessageReaction.id))) == 2
+        removed = remove_message_reaction(request["id"], original["id"], thumbs_up, session, student)
+        assert removed["reactions"] == [{"emoji": "👍", "count": 1, "reacted_by_me": False}]
+
+        other = create_request(StudyPartnerRequestCreate(recipient_profile_id=third.id), session, student)
+        accept_request(other["id"], session, third)
+        elsewhere = send_chat_message(other["id"], StudyPartnerMessageCreate(content="Elsewhere"), session, student)
+        with pytest.raises(HTTPException) as cross_conversation:
+            send_chat_message(
+                request["id"],
+                StudyPartnerMessageCreate(content="Invalid reply", reply_to_message_id=elsewhere["id"]),
+                session,
+                student,
+            )
+        assert cross_conversation.value.status_code == 422
+        with pytest.raises(HTTPException) as outsider:
+            add_message_reaction(request["id"], original["id"], thumbs_up, session, third)
+        assert outsider.value.status_code == 404
+    finally:
+        session.close()
+
+
+def test_chat_read_receipts_and_typing_are_private_and_expire(monkeypatch):
+    session, student, partner, third, _, _, topic, _ = setup()
+    try:
+        for user, name in ((student, "Ada"), (partner, "Bela"), (third, "Csilla")):
+            put_my_profile(profile_payload(name, topic.id), session, user)
+        request = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        accept_request(request["id"], session, partner)
+        message = send_chat_message(request["id"], StudyPartnerMessageCreate(content="Read me"), session, student)
+
+        assert chats(session, partner)[0]["unread_count"] == 1
+        read = mark_chat_read(
+            request["id"],
+            StudyPartnerChatReadWrite(last_message_id=message["id"]),
+            session,
+            partner,
+        )
+        assert read["last_read_message_id"] == message["id"]
+        session.expire_all()
+        assert chats(session, partner)[0]["unread_count"] == 0
+        assert chat_messages(request["id"], session, student, 0, 50)[0]["seen_by_counterpart"] is True
+
+        update_chat_typing(request["id"], StudyPartnerChatTypingWrite(is_typing=True), session, partner)
+        assert chats(session, student)[0]["counterpart_typing"] is True
+        receipt = session.get(
+            StudyPartnerChatReceipt,
+            {"request_id": request["id"], "user_id": partner.id},
+        )
+        assert receipt is not None and receipt.typing_expires_at is not None
+        import app.routers.study_partner as study_partner_router
+
+        monkeypatch.setattr(
+            study_partner_router,
+            "now",
+            lambda: study_partner_router.utc(receipt.typing_expires_at) + timedelta(seconds=1),
+        )
+        assert chats(session, student)[0]["counterpart_typing"] is False
+
+        with pytest.raises(HTTPException) as outsider_read:
+            mark_chat_read(
+                request["id"],
+                StudyPartnerChatReadWrite(last_message_id=message["id"]),
+                session,
+                third,
+            )
+        with pytest.raises(HTTPException) as outsider_typing:
+            update_chat_typing(
+                request["id"], StudyPartnerChatTypingWrite(is_typing=True), session, third
+            )
+        assert outsider_read.value.status_code == outsider_typing.value.status_code == 404
+    finally:
+        session.close()
+
+
+def test_chat_attachments_are_private_verified_and_associated(monkeypatch):
+    session, student, partner, third, _, _, topic, _ = setup()
+    try:
+        for user, name in ((student, "Ada"), (partner, "Bela"), (third, "Csilla")):
+            put_my_profile(profile_payload(name, topic.id), session, user)
+        request = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        accept_request(request["id"], session, partner)
+        storage = FakeChatStorage()
+        import app.routers.study_partner as study_partner_router
+
+        monkeypatch.setattr(study_partner_router, "_attachment_storage_or_unavailable", lambda: storage)
+        attachment_model = upload_chat_attachment_bytes(
+            session,
+            request["id"],
+            student.id,
+            "notes.txt",
+            "text/plain",
+            b"safe study notes",
+        )
+        attachment = study_partner_router.attachment_read(attachment_model)
+        assert attachment == {
+            "id": 1,
+            "filename": "notes.txt",
+            "media_type": "text/plain",
+            "size_bytes": 16,
+            "is_inline_preview": True,
+        }
+        with pytest.raises(HTTPException) as pending_access:
+            download_chat_attachment(request["id"], attachment["id"], session, partner)
+        assert pending_access.value.status_code == 404
+
+        sent = send_chat_message(
+            request["id"],
+            StudyPartnerMessageCreate(content="", attachment_ids=[attachment["id"]]),
+            session,
+            student,
+        )
+        assert sent["attachments"] == [attachment]
+        response = download_chat_attachment(request["id"], attachment["id"], session, partner)
+        assert response.body == b"safe study notes"
+        assert response.headers["content-disposition"] == 'attachment; filename="notes.txt"'
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert session.get(StudyPartnerMessageAttachment, attachment["id"]).storage_key not in str(sent)
+
+        with pytest.raises(HTTPException) as outsider:
+            download_chat_attachment(request["id"], attachment["id"], session, third)
+        assert outsider.value.status_code == 404
+    finally:
+        session.close()
+
+
+def test_chat_attachment_validation_cleanup_and_storage_failures(monkeypatch):
+    session, student, partner, _, _, _, topic, _ = setup()
+    try:
+        for user, name in ((student, "Ada"), (partner, "Bela")):
+            put_my_profile(profile_payload(name, topic.id), session, user)
+        request = create_request(StudyPartnerRequestCreate(recipient_profile_id=partner.id), session, student)
+        accept_request(request["id"], session, partner)
+        storage = FakeChatStorage()
+        import app.routers.study_partner as study_partner_router
+
+        monkeypatch.setattr(study_partner_router, "_attachment_storage_or_unavailable", lambda: storage)
+        with pytest.raises(HTTPException) as unsupported:
+            upload_chat_attachment_bytes(
+                session, request["id"], student.id, "unsafe.svg", "image/svg+xml", b"<svg/>"
+            )
+        assert unsupported.value.status_code == 422 and not storage.objects
+
+        monkeypatch.setattr(
+            study_partner_router,
+            "get_settings",
+            lambda: SimpleNamespace(study_partner_chat_max_attachment_bytes=3),
+        )
+        with pytest.raises(HTTPException) as oversized:
+            upload_chat_attachment_bytes(
+                session, request["id"], student.id, "large.txt", "text/plain", b"four"
+            )
+        assert oversized.value.status_code == 422 and not storage.objects
+
+        monkeypatch.setattr(
+            study_partner_router,
+            "get_settings",
+            lambda: SimpleNamespace(study_partner_chat_max_attachment_bytes=5_000_000),
+        )
+        pending = upload_chat_attachment_bytes(
+            session, request["id"], student.id, "remove.txt", "text/plain", b"remove"
+        )
+        delete_pending_chat_attachment(request["id"], pending.id, session, student)
+        assert not storage.objects and storage.deleted
+
+        monkeypatch.setattr(study_partner_router, "_attachment_storage_or_unavailable", lambda: FakeChatStorage(fail_put=True))
+        with pytest.raises(HTTPException) as provider_failure:
+            upload_chat_attachment_bytes(
+                session, request["id"], student.id, "retry.txt", "text/plain", b"retry"
+            )
+        assert provider_failure.value.status_code == 502
     finally:
         session.close()

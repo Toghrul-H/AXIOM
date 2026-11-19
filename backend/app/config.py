@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     materials_google_drive_token_file: str = ''
     materials_google_drive_token_json: SecretStr = SecretStr('')
     materials_max_upload_bytes: int = Field(default=25_000_000, ge=1_024, le=100_000_000)
+    study_partner_chat_max_attachment_bytes: int = Field(
+        default=5_000_000, ge=1_024, le=25_000_000
+    )
 
     @field_validator('email_from_address')
     @classmethod

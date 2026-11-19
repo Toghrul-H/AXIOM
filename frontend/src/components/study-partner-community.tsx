@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Topic } from "@/lib/questions";
 import {
@@ -20,6 +21,15 @@ const statusLabel: Record<StudyPartnerRequestStatus, string> = {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function initials(value: string) {
+  return value
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function TopicList({
@@ -53,6 +63,7 @@ export function StudyPartnerDiscovery({
     StudyPartnerPublicProfile[]
   >([]);
   const [topicId, setTopicId] = useState("");
+  const [search, setSearch] = useState("");
   const [studyFormat, setStudyFormat] = useState<StudyFormat | "">("");
   const [loading, setLoading] = useState(false);
   const [sendingTo, setSendingTo] = useState<number | null>(null);
@@ -146,6 +157,22 @@ export function StudyPartnerDiscovery({
     }
   }
 
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return items;
+    return items.filter((partner) =>
+      [
+        partner.display_name,
+        partner.introduction ?? "",
+        ...partner.shared_study_topics.map((topic) => topic.name),
+        ...partner.complementary_topics.map((topic) => topic.name),
+      ]
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(query),
+    );
+  }, [items, search]);
+
   return (
     <section
       className="study-partner-section"
@@ -165,6 +192,15 @@ export function StudyPartnerDiscovery({
       ) : (
         <>
           <div className="study-partner-filters" aria-label="Partner filters">
+            <label className="study-partner-search">
+              Search partners
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Name or topic"
+                type="search"
+              />
+            </label>
             <label>
               Topic
               <select
@@ -208,35 +244,48 @@ export function StudyPartnerDiscovery({
             <p className="panel loading-state" role="status">
               Loading partners…
             </p>
-          ) : items.length ? (
+          ) : visibleItems.length ? (
             <div className="study-partner-card-list">
-              {items.map((partner) => (
+              {visibleItems.map((partner) => (
                 <article
                   className="panel study-partner-card"
                   key={partner.profile_id}
                 >
                   <div className="study-partner-card-heading">
-                    <h3>{partner.display_name}</h3>
+                    <div className="study-partner-identity">
+                      <span className="study-partner-avatar" aria-hidden="true">
+                        {initials(partner.display_name)}
+                      </span>
+                      <div>
+                        <h3>{partner.display_name}</h3>
+                        <small>Study Partner profile</small>
+                      </div>
+                    </div>
                     <span className="recruitment-status status-submitted">
                       {partner.study_format === "IN_PERSON"
                         ? "IN PERSON"
                         : partner.study_format}
                     </span>
                   </div>
-                  {partner.introduction && <p>{partner.introduction}</p>}
-                  <TopicList
-                    title="Shared study topics"
-                    topics={partner.shared_study_topics}
-                  />
-                  <TopicList
-                    title="Complementary topics"
-                    topics={partner.complementary_topics}
-                  />
-                  <p className="field-hint">
-                    {partner.has_compatible_availability
-                      ? "Your saved availability overlaps. Exact schedules stay private."
-                      : "No availability overlap is currently recorded."}
-                  </p>
+                  <details className="study-partner-card-details">
+                    <summary>View profile</summary>
+                    <div>
+                      {partner.introduction && <p>{partner.introduction}</p>}
+                      <TopicList
+                        title="Shared study topics"
+                        topics={partner.shared_study_topics}
+                      />
+                      <TopicList
+                        title="Complementary topics"
+                        topics={partner.complementary_topics}
+                      />
+                      <p className="field-hint">
+                        {partner.has_compatible_availability
+                          ? "Your saved availability overlaps. Exact schedules stay private."
+                          : "No availability overlap is currently recorded."}
+                      </p>
+                    </div>
+                  </details>
                   <div className="quiz-actions">
                     <button
                       className="button button-primary"
@@ -440,6 +489,14 @@ export function StudyPartnerRequests({
                 >
                   {busy === request.id ? "Working…" : "Cancel"}
                 </button>
+              )}
+              {request.status === "ACCEPTED" && (
+                <Link
+                  className="button button-primary"
+                  href="/student/messages"
+                >
+                  Message
+                </Link>
               )}
               <button
                 className="button button-secondary"

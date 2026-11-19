@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ChangeEvent,
   FormEvent,
   KeyboardEvent,
   ReactNode,
@@ -12,12 +13,18 @@ import {
 
 import {
   type StudyPartnerChat,
+  type StudyPartnerMessageAttachment,
   type StudyPartnerMessage,
+  type StudyPartnerReactionEmoji,
+  STUDY_PARTNER_REACTION_EMOJIS,
   studyPartnerApi,
 } from "@/lib/study-partner";
 
 const POLL_INTERVAL_MS = 5_000;
+const TYPING_THROTTLE_MS = 3_000;
 const MAX_MESSAGE_LENGTH = 2_000;
+const MAX_ATTACHMENT_BYTES = 5_000_000;
+const MAX_ATTACHMENTS = 3;
 
 function mergeMessages(
   current: StudyPartnerMessage[],
@@ -65,6 +72,12 @@ function friendlyError(error: unknown, fallback: string) {
   return fallback;
 }
 
+function formatAttachmentSize(sizeBytes: number) {
+  return sizeBytes < 1_000_000
+    ? `${Math.max(1, Math.round(sizeBytes / 1_000))} KB`
+    : `${(sizeBytes / 1_000_000).toFixed(1)} MB`;
+}
+
 export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
   const [conversations, setConversations] = useState<StudyPartnerChat[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(
@@ -72,15 +85,24 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
   );
   const [messages, setMessages] = useState<StudyPartnerMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [replyingTo, setReplyingTo] = useState<StudyPartnerMessage | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [messageError, setMessageError] = useState("");
+  const [reactingTo, setReactingTo] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const fetchingMessagesRef = useRef(false);
   const selectedRequestRef = useRef<number | null>(null);
+  const lastReadMessageRef = useRef(new Map<number, number>());
+  const lastTypingUpdateRef = useRef(0);
+  const typingRequestRef = useRef<number | null>(null);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -99,30 +121,81 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
     }
   }, []);
 
-  const loadMessages = useCallback(async (requestId: number) => {
-    if (fetchingMessagesRef.current) return;
-    fetchingMessagesRef.current = true;
-    const element = listRef.current;
-    stickToBottomRef.current =
-      !element ||
-      element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-    try {
-      const next = await studyPartnerApi.messages(requestId);
-      if (selectedRequestRef.current === requestId) {
-        setMessages((current) => mergeMessages(current, next));
-        setMessageError("");
-      }
-    } catch (loadError) {
-      if (selectedRequestRef.current === requestId) {
-        setMessageError(
-          friendlyError(loadError, "Messages could not be loaded."),
+  const markRead = useCallback(
+    async (requestId: number, messageId?: number) => {
+      if (
+        !messageId ||
+        document.visibilityState !== "visible" ||
+        !document.hasFocus()
+      )
+        return;
+      if ((lastReadMessageRef.current.get(requestId) ?? 0) >= messageId) return;
+      try {
+        await studyPartnerApi.markRead(requestId, messageId);
+        lastReadMessageRef.current.set(requestId, messageId);
+        setConversations((current) =>
+          current.map((conversation) =>
+            conversation.request_id === requestId
+              ? { ...conversation, unread_count: 0 }
+              : conversation,
+          ),
         );
+      } catch {
+        // Read status is retried on the next visible polling cycle.
       }
-    } finally {
-      fetchingMessagesRef.current = false;
-      if (selectedRequestRef.current === requestId) setLoadingMessages(false);
-    }
-  }, []);
+    },
+    [],
+  );
+
+  const updateTyping = useCallback(
+    async (requestId: number, isTyping: boolean) => {
+      const timestamp = Date.now();
+      if (
+        isTyping &&
+        typingRequestRef.current === requestId &&
+        timestamp - lastTypingUpdateRef.current < TYPING_THROTTLE_MS
+      )
+        return;
+      if (!isTyping && typingRequestRef.current !== requestId) return;
+      try {
+        await studyPartnerApi.typing(requestId, isTyping);
+        typingRequestRef.current = isTyping ? requestId : null;
+        lastTypingUpdateRef.current = isTyping ? timestamp : 0;
+      } catch {
+        // Typing is ephemeral; stale status naturally expires server-side.
+      }
+    },
+    [],
+  );
+
+  const loadMessages = useCallback(
+    async (requestId: number) => {
+      if (fetchingMessagesRef.current) return;
+      fetchingMessagesRef.current = true;
+      const element = listRef.current;
+      stickToBottomRef.current =
+        !element ||
+        element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+      try {
+        const next = await studyPartnerApi.messages(requestId);
+        if (selectedRequestRef.current === requestId) {
+          setMessages((current) => mergeMessages(current, next));
+          setMessageError("");
+          void markRead(requestId, next.at(-1)?.id);
+        }
+      } catch (loadError) {
+        if (selectedRequestRef.current === requestId) {
+          setMessageError(
+            friendlyError(loadError, "Messages could not be loaded."),
+          );
+        }
+      } finally {
+        fetchingMessagesRef.current = false;
+        if (selectedRequestRef.current === requestId) setLoadingMessages(false);
+      }
+    },
+    [markRead],
+  );
 
   useEffect(() => {
     const initial = window.setTimeout(() => void loadConversations(), 0);
@@ -148,6 +221,30 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
   }, [loadConversations, loadMessages, selectedRequestId]);
 
   useEffect(() => {
+    const requestId = selectedRequestId;
+    return () => {
+      if (requestId && typingRequestRef.current === requestId) {
+        void updateTyping(requestId, false);
+      }
+    };
+  }, [selectedRequestId, updateTyping]);
+
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      const requestId = selectedRequestRef.current;
+      if (requestId) void loadMessages(requestId);
+      void loadConversations();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onVisibilityChange);
+    };
+  }, [loadConversations, loadMessages]);
+
+  useEffect(() => {
     if (stickToBottomRef.current) {
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
     }
@@ -161,8 +258,8 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
     event?.preventDefault();
     const content = draft.trim();
     if (!selectedRequestId || sending) return;
-    if (!content) {
-      setMessageError("Write a message before sending.");
+    if (!content && selectedFiles.length === 0) {
+      setMessageError("Write a message or attach a file before sending.");
       return;
     }
     if (content.length > MAX_MESSAGE_LENGTH) {
@@ -174,21 +271,83 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
     setSending(true);
     setMessageError("");
     stickToBottomRef.current = true;
+    void updateTyping(selectedRequestId, false);
+    const uploaded: StudyPartnerMessageAttachment[] = [];
     try {
+      for (const [index, file] of selectedFiles.entries()) {
+        setUploadingIndex(index);
+        uploaded.push(
+          await studyPartnerApi.uploadAttachment(selectedRequestId, file),
+        );
+      }
       const message = await studyPartnerApi.sendMessage(
         selectedRequestId,
         content,
+        replyingTo?.id,
+        uploaded.map((attachment) => attachment.id),
       );
       if (selectedRequestRef.current === selectedRequestId) {
         setMessages((current) => mergeMessages(current, [message]));
       }
       setDraft("");
+      setSelectedFiles([]);
+      setReplyingTo(null);
       await loadConversations();
     } catch (sendError) {
+      await Promise.all(
+        uploaded.map((attachment) =>
+          studyPartnerApi
+            .deleteAttachment(selectedRequestId, attachment.id)
+            .catch(() => undefined),
+        ),
+      );
       setMessageError(friendlyError(sendError, "Message could not be sent."));
     } finally {
       setSending(false);
+      setUploadingIndex(null);
     }
+  }
+
+  async function updateReaction(
+    message: StudyPartnerMessage,
+    emoji: StudyPartnerReactionEmoji,
+  ) {
+    if (!selectedRequestId) return;
+    const reaction = (message.reactions ?? []).find(
+      (candidate) => candidate.emoji === emoji,
+    );
+    const key = `${message.id}:${emoji}`;
+    if (reactingTo) return;
+    setReactingTo(key);
+    setMessageError("");
+    try {
+      const next = reaction?.reacted_by_me
+        ? await studyPartnerApi.removeReaction(
+            selectedRequestId,
+            message.id,
+            emoji,
+          )
+        : await studyPartnerApi.addReaction(
+            selectedRequestId,
+            message.id,
+            emoji,
+          );
+      if (selectedRequestRef.current === selectedRequestId) {
+        setMessages((current) => mergeMessages(current, [next]));
+      }
+    } catch (reactionError) {
+      setMessageError(
+        friendlyError(reactionError, "Reaction could not be updated."),
+      );
+    } finally {
+      setReactingTo(null);
+    }
+  }
+
+  function showOriginal(messageId: number) {
+    document
+      .getElementById(`study-partner-message-${messageId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -196,6 +355,33 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
       event.preventDefault();
       void send();
     }
+  }
+
+  function onDraftChange(value: string) {
+    setDraft(value);
+    if (selectedRequestId) {
+      void updateTyping(selectedRequestId, Boolean(value.trim()));
+    }
+  }
+
+  function selectAttachments(event: ChangeEvent<HTMLInputElement>) {
+    const incoming = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!incoming.length) return;
+    if (selectedFiles.length + incoming.length > MAX_ATTACHMENTS) {
+      setMessageError(`Attach up to ${MAX_ATTACHMENTS} files at once.`);
+      return;
+    }
+    if (incoming.some((file) => file.size > MAX_ATTACHMENT_BYTES)) {
+      setMessageError("Each attachment must be 5 MB or smaller.");
+      return;
+    }
+    setMessageError("");
+    setSelectedFiles((current) => [...current, ...incoming]);
+  }
+
+  function removeSelectedAttachment(index: number) {
+    setSelectedFiles((current) => current.filter((_, item) => item !== index));
   }
 
   return (
@@ -249,6 +435,8 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
                 onClick={() => {
                   selectedRequestRef.current = conversation.request_id;
                   setMessages([]);
+                  setReplyingTo(null);
+                  setSelectedFiles([]);
                   setSelectedRequestId(conversation.request_id);
                 }}
               >
@@ -256,13 +444,30 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
                 <span>
                   {conversation.last_message_preview ?? "Start a conversation"}
                 </span>
+                {conversation.unread_count > 0 && (
+                  <b
+                    aria-label={`${conversation.unread_count} unread messages`}
+                    className="study-partner-unread-badge"
+                  >
+                    {conversation.unread_count > 99
+                      ? "99+"
+                      : conversation.unread_count}
+                  </b>
+                )}
               </button>
             ))}
           </nav>
           <div className="panel study-partner-message-panel">
             {selected ? (
               <>
-                <h3>Chat with {selected.counterpart.display_name}</h3>
+                <div className="study-partner-chat-heading">
+                  <h3>Chat with {selected.counterpart.display_name}</h3>
+                  {selected.counterpart_typing && (
+                    <span aria-live="polite" className="study-partner-typing">
+                      {selected.counterpart.display_name} is typing…
+                    </span>
+                  )}
+                </div>
                 {messageError && (
                   <p className="error-message" role="alert">
                     {messageError}
@@ -281,21 +486,128 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
                     <p className="empty-inline">No messages yet. Say hello.</p>
                   ) : (
                     messages.map((message) => {
+                      const reactions = message.reactions ?? [];
                       const own =
                         message.sender_user_id !==
                         selected.counterpart.profile_id;
                       return (
                         <article
                           className={`study-partner-message ${own ? "is-own" : ""}`}
+                          id={`study-partner-message-${message.id}`}
                           key={message.id}
                         >
                           <strong>
                             {own ? "You" : selected.counterpart.display_name}
                           </strong>
+                          {message.reply_to && (
+                            <button
+                              className="study-partner-reply-quote"
+                              onClick={() => showOriginal(message.reply_to!.id)}
+                              type="button"
+                            >
+                              <span>
+                                {message.reply_to.sender_user_id ===
+                                selected.counterpart.profile_id
+                                  ? selected.counterpart.display_name
+                                  : "You"}
+                              </span>
+                              {message.reply_to.content}
+                            </button>
+                          )}
                           <p>{safeMessageContent(message.content)}</p>
+                          {message.attachments?.length > 0 && (
+                            <ul className="study-partner-attachments">
+                              {message.attachments.map((attachment) => {
+                                const base = `/api/study-partner/chats/${selected.request_id}/attachments/${attachment.id}`;
+                                return (
+                                  <li key={attachment.id}>
+                                    <div>
+                                      <strong>{attachment.filename}</strong>
+                                      <span>
+                                        {attachment.media_type} ·{" "}
+                                        {formatAttachmentSize(
+                                          attachment.size_bytes,
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="study-partner-attachment-actions">
+                                      {attachment.is_inline_preview && (
+                                        <a
+                                          href={`${base}/preview`}
+                                          rel="noopener noreferrer"
+                                          target="_blank"
+                                        >
+                                          View
+                                        </a>
+                                      )}
+                                      <a href={`${base}/download`}>Download</a>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
                           <time dateTime={message.created_at}>
                             {new Date(message.created_at).toLocaleString()}
                           </time>
+                          {own && (
+                            <span
+                              aria-label={
+                                message.seen_by_counterpart
+                                  ? "Seen by your study partner"
+                                  : "Sent to your study partner"
+                              }
+                              className="study-partner-receipt"
+                            >
+                              {message.seen_by_counterpart ? "Seen" : "Sent"}
+                            </span>
+                          )}
+                          <div
+                            aria-label="Message actions"
+                            className="study-partner-message-actions"
+                          >
+                            <div
+                              aria-label="Add or remove a reaction"
+                              className="study-partner-reactions"
+                            >
+                              {STUDY_PARTNER_REACTION_EMOJIS.map((emoji) => {
+                                const reaction = reactions.find(
+                                  (candidate) => candidate.emoji === emoji,
+                                );
+                                const reactionKey = `${message.id}:${emoji}`;
+                                return (
+                                  <button
+                                    aria-label={`${reaction?.reacted_by_me ? "Remove" : "Add"} ${emoji} reaction`}
+                                    aria-pressed={
+                                      reaction?.reacted_by_me ?? false
+                                    }
+                                    className={`study-partner-reaction ${reaction?.reacted_by_me ? "is-active" : ""}`}
+                                    disabled={reactingTo !== null}
+                                    key={emoji}
+                                    onClick={() =>
+                                      void updateReaction(message, emoji)
+                                    }
+                                    type="button"
+                                  >
+                                    {emoji}
+                                    {reaction ? (
+                                      <span>{reaction.count}</span>
+                                    ) : null}
+                                    {reactingTo === reactionKey ? (
+                                      <span className="sr-only">Updating</span>
+                                    ) : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <button
+                              className="button button-secondary study-partner-reply-action"
+                              onClick={() => setReplyingTo(message)}
+                              type="button"
+                            >
+                              Reply
+                            </button>
+                          </div>
                         </article>
                       );
                     })
@@ -305,25 +617,83 @@ export function StudyPartnerChat({ refreshKey }: { refreshKey: number }) {
                   className="study-partner-composer"
                   onSubmit={(event) => void send(event)}
                 >
+                  {replyingTo && (
+                    <div className="study-partner-composer-reply">
+                      <div>
+                        <strong>Replying to message</strong>
+                        <span>{replyingTo.content}</span>
+                      </div>
+                      <button
+                        aria-label="Cancel reply"
+                        className="button button-secondary"
+                        onClick={() => setReplyingTo(null)}
+                        type="button"
+                      >
+                        Cancel reply
+                      </button>
+                    </div>
+                  )}
+                  {selectedFiles.length > 0 && (
+                    <ul className="study-partner-selected-attachments">
+                      {selectedFiles.map((file, index) => (
+                        <li key={`${file.name}-${file.lastModified}-${index}`}>
+                          <div>
+                            <strong>{file.name}</strong>
+                            <span>{formatAttachmentSize(file.size)}</span>
+                          </div>
+                          <button
+                            aria-label={`Remove ${file.name}`}
+                            className="button button-secondary"
+                            disabled={sending}
+                            onClick={() => removeSelectedAttachment(index)}
+                            type="button"
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <label htmlFor="study-partner-message">Message</label>
                   <textarea
                     id="study-partner-message"
                     maxLength={MAX_MESSAGE_LENGTH}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onBlur={() => {
+                      if (selectedRequestId)
+                        void updateTyping(selectedRequestId, false);
+                    }}
+                    onChange={(event) => onDraftChange(event.target.value)}
                     onKeyDown={onComposerKeyDown}
                     placeholder="Write a message…"
                     value={draft}
                   />
                   <div className="quiz-actions">
                     <span className="field-hint">
-                      Enter sends · Shift+Enter adds a line
+                      Enter sends · Shift+Enter adds a line · Files up to 5 MB
                     </span>
+                    <label className="button button-secondary study-partner-attach">
+                      Attach file
+                      <input
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.markdown"
+                        disabled={
+                          sending || selectedFiles.length >= MAX_ATTACHMENTS
+                        }
+                        onChange={selectAttachments}
+                        type="file"
+                      />
+                    </label>
                     <button
                       className="button button-primary"
-                      disabled={sending || !draft.trim()}
+                      disabled={
+                        sending || (!draft.trim() && !selectedFiles.length)
+                      }
                       type="submit"
                     >
-                      {sending ? "Sending…" : "Send"}
+                      {sending
+                        ? uploadingIndex !== null
+                          ? `Uploading ${uploadingIndex + 1} of ${selectedFiles.length}…`
+                          : "Sending…"
+                        : "Send"}
                     </button>
                   </div>
                 </form>

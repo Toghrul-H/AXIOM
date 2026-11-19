@@ -14,10 +14,11 @@ async function forward(
   const { parts = [] } = await context.params;
   const suffix = parts.join("/");
   const patterns: Record<string, RegExp> = {
-    GET: /^(?:me|partners|requests|chats(?:\/[1-9][0-9]*\/messages)?)$/,
+    GET: /^(?:me|partners|requests|chats(?:\/[1-9][0-9]*\/(?:messages|attachments\/[1-9][0-9]*\/(?:download|preview)))?)$/,
     PUT: /^me$/,
-    POST: /^(?:requests(?:\/[1-9][0-9]*\/(?:accept|decline|cancel))?|blocks|chats\/[1-9][0-9]*\/messages)$/,
-    DELETE: /^blocks\/[1-9][0-9]*$/,
+    POST: /^(?:requests(?:\/[1-9][0-9]*\/(?:accept|decline|cancel))?|blocks|chats\/[1-9][0-9]*\/(?:read|typing|attachments|messages(?:\/[1-9][0-9]*\/reactions)?))$/,
+    DELETE:
+      /^(?:blocks\/[1-9][0-9]*|chats\/[1-9][0-9]*\/(?:attachments\/[1-9][0-9]*|messages\/[1-9][0-9]*\/reactions))$/,
   };
   if (!patterns[request.method]?.test(suffix))
     return new Response(null, { status: 404 });
@@ -31,6 +32,7 @@ async function forward(
     "origin",
     "sec-fetch-site",
     "content-type",
+    "x-chat-filename",
   ]) {
     const value = request.headers.get(key);
     if (value) headers.set(key, value);
@@ -41,9 +43,13 @@ async function forward(
       {
         method: request.method,
         headers,
-        body: ["POST", "PUT"].includes(request.method)
-          ? await request.text()
-          : undefined,
+        body:
+          request.method === "POST" && suffix.endsWith("/attachments")
+            ? await request.arrayBuffer()
+            : ["POST", "PUT"].includes(request.method) ||
+                (request.method === "DELETE" && suffix.endsWith("/reactions"))
+              ? await request.text()
+              : undefined,
         cache: "no-store",
         redirect: "manual",
         signal: request.signal,
@@ -57,15 +63,19 @@ async function forward(
           headers: { "Cache-Control": "no-store", Vary: "Cookie" },
         },
       );
+    const responseHeaders = new Headers({
+      "Content-Type":
+        response.headers.get("content-type") ?? "application/json",
+      "Cache-Control": "no-store",
+      Vary: "Cookie",
+      "X-Content-Type-Options": "nosniff",
+    });
+    const contentDisposition = response.headers.get("content-disposition");
+    if (contentDisposition)
+      responseHeaders.set("Content-Disposition", contentDisposition);
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        "Content-Type":
-          response.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-        Vary: "Cookie",
-        "X-Content-Type-Options": "nosniff",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return unavailable();

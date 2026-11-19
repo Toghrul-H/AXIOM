@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 StudyFormat = Literal["ONLINE", "IN_PERSON", "EITHER"]
 TopicPurpose = Literal["WANT_TO_STUDY", "CAN_HELP"]
 RequestStatus = Literal["PENDING", "ACCEPTED", "DECLINED", "CANCELLED"]
+StudyPartnerReactionEmoji = Literal["👍", "❤️", "😂", "😮", "😢", "🎉"]
 
 
 def _clean_short(value: str) -> str:
@@ -128,17 +129,61 @@ class StudyPartnerBlockRead(BaseModel):
 
 
 class StudyPartnerMessageCreate(BaseModel):
-    content: str = Field(min_length=1, max_length=2000)
+    content: str = Field(default="", max_length=2000)
+    reply_to_message_id: int | None = Field(default=None, gt=0)
+    attachment_ids: list[int] = Field(default_factory=list, max_length=3)
 
     @field_validator("content")
     @classmethod
     def clean_content(cls, value: str) -> str:
         value = value.strip()
-        if not value:
-            raise ValueError("Message cannot be empty")
         if any(ord(character) < 32 and character not in "\n\r\t" for character in value):
             raise ValueError("Control characters are not permitted")
         return value
+
+    @model_validator(mode="after")
+    def has_message_content(self):
+        if not self.content and not self.attachment_ids:
+            raise ValueError("Write a message or attach a file")
+        if len(set(self.attachment_ids)) != len(self.attachment_ids):
+            raise ValueError("Attachments must be unique")
+        return self
+
+
+class StudyPartnerMessageReplyRead(BaseModel):
+    id: int
+    sender_user_id: int
+    content: str
+
+
+class StudyPartnerMessageReactionRead(BaseModel):
+    emoji: StudyPartnerReactionEmoji
+    count: int = Field(ge=1)
+    reacted_by_me: bool
+
+
+class StudyPartnerMessageReactionWrite(BaseModel):
+    emoji: StudyPartnerReactionEmoji
+
+
+class StudyPartnerChatReadWrite(BaseModel):
+    last_message_id: int = Field(gt=0)
+
+
+class StudyPartnerChatTypingWrite(BaseModel):
+    is_typing: bool
+
+
+class StudyPartnerChatReceiptRead(BaseModel):
+    last_read_message_id: int | None = None
+
+
+class StudyPartnerMessageAttachmentRead(BaseModel):
+    id: int
+    filename: str
+    media_type: str
+    size_bytes: int = Field(gt=0)
+    is_inline_preview: bool
 
 
 class StudyPartnerMessageRead(BaseModel):
@@ -146,6 +191,11 @@ class StudyPartnerMessageRead(BaseModel):
     sender_user_id: int
     content: str
     created_at: datetime
+    reply_to_message_id: int | None = None
+    reply_to: StudyPartnerMessageReplyRead | None = None
+    reactions: list[StudyPartnerMessageReactionRead] = Field(default_factory=list)
+    seen_by_counterpart: bool = False
+    attachments: list[StudyPartnerMessageAttachmentRead] = Field(default_factory=list)
 
 
 class StudyPartnerChatRead(BaseModel):
@@ -153,3 +203,5 @@ class StudyPartnerChatRead(BaseModel):
     counterpart: StudyPartnerRequestCounterpart
     last_message_preview: str | None = None
     last_message_at: datetime | None = None
+    unread_count: int = Field(ge=0, default=0)
+    counterpart_typing: bool = False

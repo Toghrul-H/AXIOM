@@ -104,7 +104,13 @@ test("Study Partner proxy forwards unchanged PUT profile payload and rejects uns
 test("Study Partner proxy forwards discovery, request actions, blocks, and chat routes", async () => {
   const calls = [];
   const handler = route(async (url, init) => {
-    calls.push([String(url), init.method, init.body]);
+    calls.push([
+      String(url),
+      init.method,
+      init.body instanceof ArrayBuffer
+        ? new TextDecoder().decode(init.body)
+        : init.body,
+    ]);
     return Response.json({ ok: true });
   });
   await handler.GET(
@@ -131,6 +137,34 @@ test("Study Partner proxy forwards discovery, request actions, blocks, and chat 
     request("/chats/7/messages", "POST", '{"content":"Hello"}'),
     context(["chats", "7", "messages"]),
   );
+  await handler.POST(
+    request("/chats/7/read", "POST", '{"last_message_id":9}'),
+    context(["chats", "7", "read"]),
+  );
+  await handler.POST(
+    request("/chats/7/typing", "POST", '{"is_typing":true}'),
+    context(["chats", "7", "typing"]),
+  );
+  await handler.POST(
+    request("/chats/7/attachments", "POST", "safe attachment"),
+    context(["chats", "7", "attachments"]),
+  );
+  await handler.GET(
+    request("/chats/7/attachments/9/download"),
+    context(["chats", "7", "attachments", "9", "download"]),
+  );
+  await handler.DELETE(
+    request("/chats/7/attachments/9", "DELETE"),
+    context(["chats", "7", "attachments", "9"]),
+  );
+  await handler.POST(
+    request("/chats/7/messages/9/reactions", "POST", '{"emoji":"👍"}'),
+    context(["chats", "7", "messages", "9", "reactions"]),
+  );
+  await handler.DELETE(
+    request("/chats/7/messages/9/reactions", "DELETE", '{"emoji":"👍"}'),
+    context(["chats", "7", "messages", "9", "reactions"]),
+  );
   assert.deepEqual(calls, [
     [
       "https://api.example.test/study-partner/partners?topic_id=4&study_format=ONLINE",
@@ -154,7 +188,64 @@ test("Study Partner proxy forwards discovery, request actions, blocks, and chat 
       "POST",
       '{"content":"Hello"}',
     ],
+    [
+      "https://api.example.test/study-partner/chats/7/read",
+      "POST",
+      '{"last_message_id":9}',
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/typing",
+      "POST",
+      '{"is_typing":true}',
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/attachments",
+      "POST",
+      "safe attachment",
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/attachments/9/download",
+      "GET",
+      undefined,
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/attachments/9",
+      "DELETE",
+      undefined,
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/messages/9/reactions",
+      "POST",
+      '{"emoji":"👍"}',
+    ],
+    [
+      "https://api.example.test/study-partner/chats/7/messages/9/reactions",
+      "DELETE",
+      '{"emoji":"👍"}',
+    ],
   ]);
+});
+
+test("Study Partner proxy streams private attachment bytes and download headers", async () => {
+  const handler = route(
+    async () =>
+      new Response("private bytes", {
+        headers: {
+          "content-type": "text/plain",
+          "content-disposition": 'attachment; filename="notes.txt"',
+        },
+      }),
+  );
+  const response = await handler.GET(
+    request("/chats/7/attachments/9/download"),
+    context(["chats", "7", "attachments", "9", "download"]),
+  );
+  assert.equal(
+    response.headers.get("content-disposition"),
+    'attachment; filename="notes.txt"',
+  );
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(await response.text(), "private bytes");
 });
 
 test("profile editor communicates visibility, privacy, availability and pause safeguards", () => {
@@ -174,8 +265,10 @@ test("profile editor communicates visibility, privacy, availability and pause sa
 test("community UI only uses public partner fields and protects request actions", () => {
   for (const expected of [
     "Find study partners",
+    "Search partners",
     "Shared study topics",
     "Exact schedules stay private",
+    "View profile",
     "Send request",
     "Incoming",
     "Outgoing",
@@ -183,6 +276,7 @@ test("community UI only uses public partner fields and protects request actions"
   ])
     assert.match(community, new RegExp(expected));
   assert.doesNotMatch(community, /neptun|email|availability\.map/iu);
+  assert.match(community, /href="\/student\/messages"/);
 });
 
 test("chat UI uses text-safe rendering, validation, polling, and retry states", () => {
@@ -190,6 +284,13 @@ test("chat UI uses text-safe rendering, validation, polling, and retry states", 
     "Accepted Study Partner connections appear here.",
     "POL L_INTERVAL_MS".replace(" ", ""),
     "Messages can contain at most",
+    "STUDY_PARTNER_REACTION_EMOJIS",
+    "Replying to message",
+    "Cancel reply",
+    "counterpart_typing",
+    "seen_by_counterpart",
+    "Attach file",
+    "attachments",
     "noopener noreferrer",
     "This conversation is no longer available.",
   ])

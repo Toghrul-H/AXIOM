@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -105,12 +105,80 @@ class StudyPartnerBlock(Base):
 class StudyPartnerMessage(Base):
     __tablename__ = "study_partner_messages"
     __table_args__ = (
-        CheckConstraint("length(content) >= 1 AND length(content) <= 2000", name="ck_study_partner_messages_content_length"),
+        CheckConstraint("length(content) <= 2000", name="ck_study_partner_messages_content_length"),
         Index("ix_study_partner_messages_request_created", "request_id", "created_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(ForeignKey("study_partner_requests.id", ondelete="CASCADE"), nullable=False, index=True)
     sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reply_to_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("study_partner_messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class StudyPartnerMessageReaction(Base):
+    __tablename__ = "study_partner_message_reactions"
+    __table_args__ = (
+        CheckConstraint("emoji IN ('👍', '❤️', '😂', '😮', '😢', '🎉')", name="ck_study_partner_message_reactions_emoji"),
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_study_partner_message_reactions_user_emoji"),
+        Index("ix_study_partner_message_reactions_message", "message_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("study_partner_messages.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    emoji: Mapped[str] = mapped_column(String(8), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class StudyPartnerChatReceipt(Base):
+    __tablename__ = "study_partner_chat_receipts"
+    __table_args__ = (
+        Index("ix_study_partner_chat_receipts_user", "user_id"),
+        Index("ix_study_partner_chat_receipts_typing_expires", "typing_expires_at"),
+    )
+
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey("study_partner_requests.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    last_read_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("study_partner_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    typing_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StudyPartnerMessageAttachment(Base):
+    __tablename__ = "study_partner_message_attachments"
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0", name="ck_study_partner_message_attachments_size"),
+        CheckConstraint("length(sha256) = 64", name="ck_study_partner_message_attachments_sha256"),
+        Index("ix_study_partner_message_attachments_request", "request_id"),
+        Index("ix_study_partner_message_attachments_message", "message_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey("study_partner_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("study_partner_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    uploader_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    original_filename: Mapped[str] = mapped_column(String(180), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
