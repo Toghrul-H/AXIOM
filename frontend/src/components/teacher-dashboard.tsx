@@ -1,136 +1,291 @@
 "use client";
+
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Question, questionsApi, typeLabels } from "@/lib/questions";
-import { quizRequest, type StaffQuiz } from "@/lib/quizzes";
+import { useEffect, useMemo, useState } from "react";
+import {
+  BellRing,
+  BookOpen,
+  CheckCircle2,
+  ClipboardCheck,
+  FileQuestion,
+  GraduationCap,
+  Megaphone,
+  PenLine,
+  UsersRound,
+} from "lucide-react";
+import { useAuth } from "./auth-provider";
 import { PageHeading } from "./page-heading";
+import { announcementsApi, type Announcement } from "@/lib/announcements";
+import { gradingRequest, type Queue } from "@/lib/manual-grading";
+import { quizRequest, type StaffQuiz } from "@/lib/quizzes";
+import { recruitmentApi, type StaffVacancy } from "@/lib/recruitment";
+
+type DashboardData = {
+  announcements: Announcement[];
+  grading: Queue;
+  quizzes: StaffQuiz[];
+  vacancies: StaffVacancy[];
+};
+
+function displayDate(value: string | null) {
+  return value
+    ? new Intl.DateTimeFormat("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(value))
+    : "Date unavailable";
+}
+
 export function TeacherDashboard() {
-  const [data, setData] = useState<{
-    questions: Question[];
-    quizzes: StaffQuiz[];
-  } | null>(null);
+  const { user } = useAuth();
+  const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+
+  function retry() {
+    setData(null);
+    setError("");
+    setRevision((value) => value + 1);
+  }
+
   useEffect(() => {
-    let live = true;
-    const controller = new AbortController();
-    async function loadQuestions() {
-      const questions: Question[] = [];
-      for (let offset = 0; ; offset += 100) {
-        const page = await questionsApi.list(offset, 100, controller.signal);
-        questions.push(...page.items);
-        if (offset + page.items.length >= page.total || !page.items.length)
-          return questions;
-      }
-    }
-    async function loadQuizzes() {
-      const quizzes: StaffQuiz[] = [];
-      for (let offset = 0; live; offset += 20) {
-        const page = await quizRequest<StaffQuiz[]>(
-          `/quizzes?limit=20&offset=${offset}`,
-        );
-        quizzes.push(...page);
-        if (page.length < 20) break;
-      }
-      return quizzes;
-    }
-    Promise.all([loadQuestions(), loadQuizzes()])
-      .then(([questions, quizzes]) => {
-        if (live) setData({ questions, quizzes });
+    let active = true;
+    Promise.all([
+      gradingRequest<Queue>("?status=pending&offset=0&limit=4"),
+      quizRequest<StaffQuiz[]>("/quizzes?limit=100&offset=0"),
+      recruitmentApi.staff(),
+      announcementsApi.managed(),
+    ])
+      .then(([grading, quizzes, vacancies, announcements]) => {
+        if (active) setData({ grading, quizzes, vacancies, announcements });
       })
-      .catch((e: Error) => {
-        if (live && e.name !== "AbortError") setError(e.message);
+      .catch((reason: Error) => {
+        if (active)
+          setError(
+            reason.message || "The teaching workspace could not be loaded.",
+          );
       });
     return () => {
-      live = false;
-      controller.abort();
+      active = false;
     };
-  }, []);
+  }, [revision]);
+
+  const metrics = useMemo(() => {
+    const pendingApplications = data?.vacancies.reduce(
+      (total, vacancy) =>
+        total +
+        (vacancy.status_counts.SUBMITTED ?? 0) +
+        (vacancy.status_counts.UNDER_REVIEW ?? 0),
+      0,
+    );
+    return {
+      activeQuizzes: data?.quizzes.filter((quiz) => quiz.status === "ACTIVE")
+        .length,
+      pendingApplications,
+      pendingGrading: data?.grading.total,
+      publishedAnnouncements: data?.announcements.filter(
+        (announcement) => announcement.status === "published",
+      ).length,
+    };
+  }, [data]);
+
+  const publishedAnnouncements = data?.announcements
+    .filter((announcement) => announcement.status === "published")
+    .slice(0, 3);
+  const pendingVacancies = data?.vacancies.filter(
+    (vacancy) =>
+      (vacancy.status_counts.SUBMITTED ?? 0) +
+        (vacancy.status_counts.UNDER_REVIEW ?? 0) >
+      0,
+  );
+  const displayName = user?.email.split("@", 1)[0] || "Instructor";
+
   return (
-    <>
+    <main className="teacher-dashboard">
       <PageHeading
         eyebrow="TEACHING WORKSPACE"
-        title="Course overview"
-        description="Discrete Mathematics I · Resources, readiness and teaching tools."
+        title={`Welcome back, ${displayName}`}
+        description="A focused overview of current teaching work and the next actions available to you."
       />
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
-      {!data && !error && <p role="status">Loading course overview…</p>}
-      <section className="royal-overview" aria-label="Course metrics">
-        <div>
-          <p>Questions in Question Bank</p>
-          <strong>{data?.questions.length ?? "—"}</strong>
-          <Link href="/teacher/questions">Explore collection →</Link>
-        </div>
-        <div>
-          <p>Available quizzes</p>
-          <strong>
-            {data?.quizzes.filter((q) => q.status === "ACTIVE").length ?? "—"}
-          </strong>
-          <Link href="/teacher/quizzes">Manage quizzes →</Link>
-        </div>
-        <div>
-          <p>Topics represented</p>
-          <strong>
-            {data ? new Set(data.questions.map((q) => q.topic.id)).size : "—"}
-          </strong>
-          <span>Primary topics with saved questions</span>
-        </div>
-      </section>
-      <div className="section-heading">
-        <h2>Requires attention</h2>
-        <span className="muted small">Course readiness</span>
-      </div>
-      <div className="attention-grid">
-        <section className="panel attention-card">
-          <span className="development-label">IN DEVELOPMENT</span>
-          <h3>Unreviewed answers</h3>
-          <p>Manual review workflow</p>
-          <p className="field-hint">
-            Review counts will appear when this workflow is available.
-          </p>
+
+      {error ? (
+        <section className="error-message" role="alert">
+          <p>{error}</p>
+          <button className="button button-secondary" onClick={retry}>
+            Retry
+          </button>
         </section>
-        <Link className="panel attention-card" href="/teacher/quizzes">
-          <span className="eyebrow">QUIZ PREPARATION</span>
-          <h3>
-            {data
-              ? data.quizzes.filter((q) => q.status === "DRAFT").length
-              : "—"}{" "}
-            draft quizzes
-          </h3>
-          <p>Open Quiz Management to continue preparing your assessments →</p>
-        </Link>
-      </div>
-      <section className="panel course-collection">
-        <div className="panel-heading">
-          <div>
-            <h2>From your question bank</h2>
-            <p>A selection from the course collection</p>
-          </div>
-          <Link className="text-link" href="/teacher/questions">
-            View all →
-          </Link>
-        </div>
-        <div className="question-preview-list">
-          {data?.questions.slice(0, 3).map((q) => (
-            <Link href={`/teacher/questions/${q.id}/edit`} key={q.id}>
-              <span className="question-preview-id">#{q.id}</span>
-              <div>
-                <strong>{q.question_text}</strong>
-                <p>
-                  {q.topic.name} · {typeLabels[q.response_type]}
-                </p>
-              </div>
-              <span>→</span>
+      ) : !data ? (
+        <p role="status">Loading your teaching workspace…</p>
+      ) : (
+        <>
+          <section className="teacher-metrics" aria-label="Teaching overview">
+            <Link
+              className="teacher-metric metric-grading"
+              href="/teacher/grading"
+            >
+              <ClipboardCheck aria-hidden="true" />
+              <span>Pending grading</span>
+              <strong>{metrics.pendingGrading}</strong>
+              <small>Written responses awaiting review</small>
             </Link>
-          ))}
-        </div>
-        {data?.questions.length === 0 && (
-          <p>No questions yet. Start your collection in Question Bank.</p>
-        )}
-      </section>
-    </>
+            <Link
+              className="teacher-metric metric-quizzes"
+              href="/teacher/quizzes"
+            >
+              <CheckCircle2 aria-hidden="true" />
+              <span>Active quizzes</span>
+              <strong>{metrics.activeQuizzes}</strong>
+              <small>Currently available assessments</small>
+            </Link>
+            <Link
+              className="teacher-metric metric-applications"
+              href="/teacher/recruitment"
+            >
+              <UsersRound aria-hidden="true" />
+              <span>Pending applications</span>
+              <strong>{metrics.pendingApplications}</strong>
+              <small>Submitted or under review</small>
+            </Link>
+            <Link
+              className="teacher-metric metric-announcements"
+              href="/teacher/announcements"
+            >
+              <Megaphone aria-hidden="true" />
+              <span>Published announcements</span>
+              <strong>{metrics.publishedAnnouncements}</strong>
+              <small>Visible to students</small>
+            </Link>
+          </section>
+
+          <section className="teacher-work-grid" aria-label="Operational work">
+            <article className="panel teacher-priority-panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">PRIORITY ACTIONS</p>
+                  <h2>Requires attention</h2>
+                </div>
+                <Link className="text-link" href="/teacher/grading">
+                  Open grading →
+                </Link>
+              </div>
+              {data.grading.items.length || pendingVacancies?.length ? (
+                <div className="teacher-action-list">
+                  {data.grading.items.map((attempt) => (
+                    <Link
+                      href={`/teacher/grading/${attempt.attempt_id}`}
+                      key={attempt.attempt_id}
+                    >
+                      <ClipboardCheck aria-hidden="true" />
+                      <span>
+                        <strong>{attempt.quiz_title}</strong>
+                        <small>
+                          {attempt.pending_count} of{" "}
+                          {attempt.manual_answer_count} response(s) awaiting
+                          grading
+                        </small>
+                      </span>
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                  ))}
+                  {pendingVacancies?.map((vacancy) => {
+                    const pending =
+                      (vacancy.status_counts.SUBMITTED ?? 0) +
+                      (vacancy.status_counts.UNDER_REVIEW ?? 0);
+                    return (
+                      <Link href="/teacher/recruitment" key={vacancy.id}>
+                        <UsersRound aria-hidden="true" />
+                        <span>
+                          <strong>{vacancy.course_name}</strong>
+                          <small>
+                            {pending} application(s) awaiting a decision
+                          </small>
+                        </span>
+                        <span aria-hidden="true">→</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="teacher-empty">
+                  <CheckCircle2 aria-hidden="true" />
+                  <p>
+                    No submitted grading or demonstrator applications need
+                    attention right now.
+                  </p>
+                </div>
+              )}
+            </article>
+
+            <article className="panel teacher-quick-actions">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">QUICK ACTIONS</p>
+                  <h2>Teaching tools</h2>
+                </div>
+              </div>
+              <div>
+                <Link href="/teacher/quizzes">
+                  <PenLine aria-hidden="true" /> Manage quizzes
+                </Link>
+                <Link href="/teacher/questions">
+                  <FileQuestion aria-hidden="true" /> Question Bank
+                </Link>
+                <Link href="/teacher/announcements">
+                  <BellRing aria-hidden="true" /> Manage announcements
+                </Link>
+                <Link href="/teacher/recruitment">
+                  <UsersRound aria-hidden="true" /> Review applications
+                </Link>
+                <Link href="/teacher/course">
+                  <BookOpen aria-hidden="true" /> Manage course
+                </Link>
+                <Link href="/teacher/grading">
+                  <GraduationCap aria-hidden="true" /> Manual grading
+                </Link>
+              </div>
+            </article>
+          </section>
+
+          <section className="panel teacher-activity-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">RECENT ACTIVITY</p>
+                <h2>Published announcements</h2>
+              </div>
+              <Link className="text-link" href="/teacher/announcements">
+                Manage announcements →
+              </Link>
+            </div>
+            {publishedAnnouncements?.length ? (
+              <div className="teacher-activity-list">
+                {publishedAnnouncements.map((announcement) => (
+                  <Link href="/teacher/announcements" key={announcement.id}>
+                    <Megaphone aria-hidden="true" />
+                    <span>
+                      <strong>{announcement.title}</strong>
+                      <small>
+                        {announcement.category === "IMPORTANT"
+                          ? "Important"
+                          : "General"}{" "}
+                        · {displayDate(announcement.published_at)}
+                      </small>
+                    </span>
+                    <span className="status-chip">Published</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-inline">
+                No published announcements are available yet.
+              </p>
+            )}
+          </section>
+        </>
+      )}
+    </main>
   );
 }

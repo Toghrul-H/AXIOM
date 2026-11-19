@@ -8,6 +8,8 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  LayoutGrid,
+  List,
   Pencil,
   Plus,
   RefreshCw,
@@ -26,6 +28,8 @@ import { PageHeading } from "./page-heading";
 import { MathText } from "./math-text";
 
 const PAGE_SIZE = 12;
+const VIEW_PREFERENCE_KEY = "axiom-question-bank-view";
+type QuestionBankView = "cards" | "table";
 
 export function QuestionBank() {
   const [page, setPage] = useState(0);
@@ -40,6 +44,7 @@ export function QuestionBank() {
   const [pendingDelete, setPendingDelete] = useState<Question | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [view, setView] = useState<QuestionBankView>("cards");
   const dialog = useRef<HTMLDialogElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
 
@@ -60,6 +65,18 @@ export function QuestionBank() {
       });
     return () => controller.abort();
   }, [page, revision, filters]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(VIEW_PREFERENCE_KEY);
+    if (saved !== "cards" && saved !== "table") return;
+    const restore = window.setTimeout(() => setView(saved), 0);
+    return () => window.clearTimeout(restore);
+  }, []);
+
+  function changeView(next: QuestionBankView) {
+    setView(next);
+    window.localStorage.setItem(VIEW_PREFERENCE_KEY, next);
+  }
 
   function applyFilters(value: Filters) {
     setLoading(true);
@@ -140,16 +157,43 @@ export function QuestionBank() {
         <div>
           <span className="live-dot" />
           <strong>Course collection</strong>
-          <span className="muted small">Saved in your course database</span>
+          <span className="muted small">
+            {loading
+              ? "Loading questions…"
+              : `${total} matching question${total === 1 ? "" : "s"}`}
+          </span>
         </div>
-        <button
-          className="button button-quiet"
-          onClick={reload}
-          disabled={loading}
-        >
-          <RefreshCw size={15} className={loading ? "spin" : ""} />
-          Refresh
-        </button>
+        <div className="bank-toolbar-actions">
+          <div
+            className="view-toggle"
+            role="group"
+            aria-label="Question Bank view"
+          >
+            <button
+              type="button"
+              className={view === "cards" ? "active" : ""}
+              aria-pressed={view === "cards"}
+              onClick={() => changeView("cards")}
+            >
+              <LayoutGrid size={16} /> Cards
+            </button>
+            <button
+              type="button"
+              className={view === "table" ? "active" : ""}
+              aria-pressed={view === "table"}
+              onClick={() => changeView("table")}
+            >
+              <List size={16} /> Table
+            </button>
+          </div>
+          <button
+            className="button button-quiet"
+            onClick={reload}
+            disabled={loading}
+          >
+            <RefreshCw size={15} className={loading ? "spin" : ""} /> Refresh
+          </button>
+        </div>
       </div>
       {notice && (
         <div className="success-message" role="status">
@@ -214,162 +258,228 @@ export function QuestionBank() {
         </section>
       ) : (
         <>
-          <div className="question-list">
-            <p className="field-hint">
-              Grouped by primary course topic · counts reflect this filtered
-              page.
-            </p>
-            {groups.map(({ topic, questions }, index) => (
-              <section key={topic.id} className="topic-group-section">
-                {topic.parent &&
-                  groups[index - 1]?.topic.parent?.id !== topic.parent.id && (
-                    <h2 className="topic-parent-heading">
-                      {topic.parent.name}
-                    </h2>
-                  )}
-                <details className="topic-accordion" open>
-                  <summary>
-                    <span>{topic.name}</span>
-                    <span className="topic-group-count">
-                      {questions.length}{" "}
-                      {questions.length === 1 ? "question" : "questions"}
-                    </span>
-                    <ChevronDown size={17} />
-                  </summary>
-                  <div className="topic-group-questions">
-                    {questions.map((question) => (
-                      <article className="question-card" key={question.id}>
-                        <div className="question-card-heading">
-                          <div className="question-tags">
-                            <span className="topic-tag">
-                              {question.topic.parent
-                                ? `${question.topic.parent.name} / `
-                                : ""}
-                              {question.topic.name}
-                            </span>
-                            <span
-                              className={`difficulty ${question.difficulty}`}
-                            >
-                              {question.difficulty}
-                            </span>
-                            <span className="type-tag">
-                              {typeLabels[question.response_type]}
-                            </span>
-                            <span className="type-tag">
-                              {metadata?.skill_types.find(
-                                (s) => s.code === question.skill_type,
-                              )?.label ?? question.skill_type}
-                            </span>
-                            {!question.is_active && (
-                              <span className="difficulty hard">Inactive</span>
-                            )}
+          {view === "cards" ? (
+            <div className="question-list">
+              <p className="field-hint">
+                Grouped by primary course topic · counts reflect this filtered
+                page.
+              </p>
+              {groups.map(({ topic, questions }, index) => (
+                <section key={topic.id} className="topic-group-section">
+                  {topic.parent &&
+                    groups[index - 1]?.topic.parent?.id !== topic.parent.id && (
+                      <h2 className="topic-parent-heading">
+                        {topic.parent.name}
+                      </h2>
+                    )}
+                  <details className="topic-accordion" open>
+                    <summary>
+                      <span>{topic.name}</span>
+                      <span className="topic-group-count">
+                        {questions.length}{" "}
+                        {questions.length === 1 ? "question" : "questions"}
+                      </span>
+                      <ChevronDown size={17} />
+                    </summary>
+                    <div className="topic-group-questions">
+                      {questions.map((question) => (
+                        <article className="question-card" key={question.id}>
+                          <div className="question-card-heading">
+                            <div className="question-tags">
+                              <span className="topic-tag">
+                                {question.topic.parent
+                                  ? `${question.topic.parent.name} / `
+                                  : ""}
+                                {question.topic.name}
+                              </span>
+                              <span
+                                className={`difficulty ${question.difficulty}`}
+                              >
+                                {question.difficulty}
+                              </span>
+                              <span className="type-tag">
+                                {typeLabels[question.response_type]}
+                              </span>
+                              <span className="type-tag">
+                                {metadata?.skill_types.find(
+                                  (s) => s.code === question.skill_type,
+                                )?.label ?? question.skill_type}
+                              </span>
+                              {!question.is_active && (
+                                <span className="difficulty hard">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                            <span className="question-id">#{question.id}</span>
                           </div>
-                          <span className="question-id">#{question.id}</span>
-                        </div>
-                        {question.title && (
-                          <p className="question-title">{question.title}</p>
-                        )}
-                        <h2>
-                          <MathText text={question.question_text} />
-                        </h2>
-                        <div className="association-tags">
-                          {question.problem_sets.map((p) => (
-                            <span key={p.id}>{p.code}</span>
-                          ))}
-                          {question.assessment_suitabilities.map((tag) => (
-                            <span key={tag.code}>{tag.label}</span>
-                          ))}
-                        </div>
-                        {question.options.length > 0 && (
-                          <ul className="answer-options">
-                            {question.options.map((option, index) => (
-                              <li key={option.id}>
-                                <span>{String.fromCharCode(65 + index)}</span>
-                                {option.text}
-                              </li>
+                          {question.title && (
+                            <p className="question-title">{question.title}</p>
+                          )}
+                          <h2>
+                            <MathText text={question.question_text} />
+                          </h2>
+                          <div className="association-tags">
+                            {question.problem_sets.map((p) => (
+                              <span key={p.id}>{p.code}</span>
                             ))}
-                          </ul>
-                        )}
-                        <details className="solution">
-                          <summary>
-                            <BookOpen size={15} />
-                            Answer & explanation
-                            <ChevronDown size={15} />
-                          </summary>
-                          <div>
-                            <p className="eyebrow">CORRECT ANSWER</p>
-                            {question.response_type === "FREE_RESPONSE" ? (
-                              <>
+                            {question.assessment_suitabilities.map((tag) => (
+                              <span key={tag.code}>{tag.label}</span>
+                            ))}
+                          </div>
+                          {question.options.length > 0 && (
+                            <ul className="answer-options">
+                              {question.options.map((option, index) => (
+                                <li key={option.id}>
+                                  <span>{String.fromCharCode(65 + index)}</span>
+                                  {option.text}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <details className="solution">
+                            <summary>
+                              <BookOpen size={15} />
+                              Answer & explanation
+                              <ChevronDown size={15} />
+                            </summary>
+                            <div>
+                              <p className="eyebrow">CORRECT ANSWER</p>
+                              {question.response_type === "FREE_RESPONSE" ? (
+                                <>
+                                  <p className="answer-text">
+                                    <MathText
+                                      text={question.expected_answer ?? ""}
+                                    />
+                                  </p>
+                                  <p className="field-hint">
+                                    Reference only · not automatically graded
+                                  </p>
+                                </>
+                              ) : question.response_type === "TRUE_FALSE" ? (
                                 <p className="answer-text">
-                                  <MathText
-                                    text={question.expected_answer ?? ""}
-                                  />
+                                  {question.correct_boolean ? "True" : "False"}
                                 </p>
-                                <p className="field-hint">
-                                  Reference only · not automatically graded
-                                </p>
-                              </>
-                            ) : question.response_type === "TRUE_FALSE" ? (
-                              <p className="answer-text">
-                                {question.correct_boolean ? "True" : "False"}
-                              </p>
-                            ) : (
-                              <ul className="correct-answer-list">
-                                {question.options
-                                  .filter((o) => o.is_correct)
-                                  .map((o) => (
-                                    <li key={o.id}>{o.text}</li>
-                                  ))}
-                              </ul>
-                            )}
-                            {question.explanation && (
-                              <>
-                                <p className="eyebrow">EXPLANATION</p>
-                                <p>
-                                  <MathText text={question.explanation} />
-                                </p>
-                              </>
-                            )}
+                              ) : (
+                                <ul className="correct-answer-list">
+                                  {question.options
+                                    .filter((o) => o.is_correct)
+                                    .map((o) => (
+                                      <li key={o.id}>{o.text}</li>
+                                    ))}
+                                </ul>
+                              )}
+                              {question.explanation && (
+                                <>
+                                  <p className="eyebrow">EXPLANATION</p>
+                                  <p>
+                                    <MathText text={question.explanation} />
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </details>
+                          <div className="question-card-bottom">
+                            <span>
+                              Added{" "}
+                              {new Date(question.created_at).toLocaleDateString(
+                                "en-GB",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                },
+                              )}
+                            </span>
+                            <div>
+                              <Link
+                                href={`/teacher/questions/${question.id}/edit`}
+                                className="button button-quiet"
+                                aria-label={`Edit question ${question.id}`}
+                              >
+                                <Pencil size={15} />
+                                Edit
+                              </Link>
+                              <button
+                                className="button button-quiet delete-button"
+                                onClick={() => confirmDelete(question)}
+                                aria-label={`Delete question ${question.id}`}
+                              >
+                                <Trash2 size={15} />
+                                Delete
+                              </button>
+                            </div>
                           </div>
-                        </details>
-                        <div className="question-card-bottom">
-                          <span>
-                            Added{" "}
-                            {new Date(question.created_at).toLocaleDateString(
-                              "en-GB",
-                              {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              },
-                            )}
-                          </span>
-                          <div>
-                            <Link
-                              href={`/teacher/questions/${question.id}/edit`}
-                              className="button button-quiet"
-                              aria-label={`Edit question ${question.id}`}
-                            >
-                              <Pencil size={15} />
-                              Edit
-                            </Link>
-                            <button
-                              className="button button-quiet delete-button"
-                              onClick={() => confirmDelete(question)}
-                              aria-label={`Delete question ${question.id}`}
-                            >
-                              <Trash2 size={15} />
-                              Delete
-                            </button>
-                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </details>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="question-table-wrap" tabIndex={0}>
+              <table className="question-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Question</th>
+                    <th scope="col">Topic</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Difficulty</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((question) => (
+                    <tr key={question.id}>
+                      <td>
+                        <strong>
+                          {question.title || `Question #${question.id}`}
+                        </strong>
+                        <span className="question-table-preview">
+                          <MathText text={question.question_text} />
+                        </span>
+                      </td>
+                      <td>
+                        {question.topic.parent
+                          ? `${question.topic.parent.name} / `
+                          : ""}
+                        {question.topic.name}
+                      </td>
+                      <td>{typeLabels[question.response_type]}</td>
+                      <td>
+                        <span className={`difficulty ${question.difficulty}`}>
+                          {question.difficulty}
+                        </span>
+                      </td>
+                      <td>{question.is_active ? "Active" : "Inactive"}</td>
+                      <td>
+                        <div className="question-table-actions">
+                          <Link
+                            href={`/teacher/questions/${question.id}/edit`}
+                            className="button button-quiet"
+                            aria-label={`Edit question ${question.id}`}
+                          >
+                            <Pencil size={15} /> Edit
+                          </Link>
+                          <button
+                            className="button button-quiet delete-button"
+                            onClick={() => confirmDelete(question)}
+                            aria-label={`Delete question ${question.id}`}
+                          >
+                            <Trash2 size={15} /> Delete
+                          </button>
                         </div>
-                      </article>
-                    ))}
-                  </div>
-                </details>
-              </section>
-            ))}
-          </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div className="pagination">
             <p>
               Showing {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + rows.length}{" "}

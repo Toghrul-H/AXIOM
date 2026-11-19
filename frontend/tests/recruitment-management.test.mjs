@@ -27,11 +27,11 @@ test("Accept and Reject open a native focused confirmation dialog without a PATC
   assert.match(source, /onCancel=\{\(event\) =>/);
   assert.match(
     source,
-    /openDecision\(\s*application,\s*"ACCEPTED",\s*event\.currentTarget\s*\)/,
+    /openDecision\(\s*application,\s*"ACCEPTED",\s*event\.currentTarget,?\s*\)/,
   );
   assert.match(
     source,
-    /openDecision\(\s*application,\s*"REJECTED",\s*event\.currentTarget\s*\)/,
+    /openDecision\(\s*application,\s*"REJECTED",\s*event\.currentTarget,?\s*\)/,
   );
 });
 
@@ -47,7 +47,7 @@ test("confirmation PATCHes only once, preserves the selection after an error, an
   assert.match(confirm, /setDecisionPending\(true\)/);
   assert.match(
     confirm,
-    /recruitmentApi\.setStatus\(\s*vacancyId,\s*decision\.application\.id,\s*decision\.status\s*\)/,
+    /recruitmentApi\.setStatus\(\s*vacancyId,\s*decision\.application\.id,\s*decision\.status,?\s*\)/,
   );
   assert.match(confirm, /setDecision\(null\)/);
   assert.match(confirm, /await review\(vacancyId\);\s*await load\(\);/);
@@ -59,4 +59,42 @@ test("confirmation PATCHes only once, preserves the selection after an error, an
   assert.match(source, /disabled=\{decisionPending \|\| !decision\}/);
   assert.match(source, /onClick=\{closeDecision\}/);
   assert.match(proxy, /PATCH: .*applications/);
+});
+
+test("staff capacity uses accepted positions, while student cards avoid inferring filled capacity from applications", () => {
+  const staff = readFileSync(
+    new URL(
+      "../src/components/demonstrator-recruitment-management.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const student = readFileSync(
+    new URL(
+      "../src/components/demonstrator-opportunities.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    staff,
+    /vacancy\.accepted_count \/ vacancy\.available_positions/,
+  );
+  assert.match(
+    staff,
+    /aria-label=\{`\$\{vacancy\.accepted_count\} of \$\{vacancy\.available_positions\} positions filled`\}/,
+  );
+  assert.match(
+    student,
+    /Filled-position capacity is not published to applicants\./,
+  );
+  assert.doesNotMatch(student, /applicant_count[^\n]*filled/);
+});
+
+test("application management retains native confirmation and explicit Accept/Reject actions", () => {
+  assert.match(source, /className="button recruitment-accept"/);
+  assert.match(source, /className="button recruitment-reject"/);
+  assert.match(source, /data-label="Actions"/);
+  assert.match(source, /onClose=\{\(\) =>\s*window\.setTimeout/);
 });
