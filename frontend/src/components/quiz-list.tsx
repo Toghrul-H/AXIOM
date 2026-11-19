@@ -14,11 +14,12 @@ export function QuizList({ historyOnly = false }: { historyOnly?: boolean }) {
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [revision, setRevision] = useState(0);
   const quizRows = quizzes ?? [];
   useEffect(() => {
     let live = true;
     Promise.all([
-      historyOnly || studentView ? Promise.resolve([]) : quizzesApi.list(),
+      historyOnly ? Promise.resolve([]) : quizzesApi.list(),
       studentView ? Promise.resolve([]) : quizzesApi.history(offset),
     ])
       .then(([q, a]) => {
@@ -28,12 +29,17 @@ export function QuizList({ historyOnly = false }: { historyOnly?: boolean }) {
         }
       })
       .catch((e) => {
-        if (live) setError(e.message);
+        if (live) setError(e instanceof Error ? e.message : "Please retry.");
       });
     return () => {
       live = false;
     };
-  }, [offset, historyOnly, studentView]);
+  }, [offset, historyOnly, revision, studentView]);
+  const retry = () => {
+    setError("");
+    setQuizzes(null);
+    setRevision((value) => value + 1);
+  };
   async function start(id: number) {
     setBusy(true);
     setError("");
@@ -64,10 +70,13 @@ export function QuizList({ historyOnly = false }: { historyOnly?: boolean }) {
       )}
       {error && (
         <p className="error-message" role="alert">
-          {error}
+          {error}{" "}
+          <button className="button button-quiet" onClick={retry}>
+            Retry
+          </button>
         </p>
       )}
-      {!historyOnly && !quizzes ? (
+      {!historyOnly && !quizzes && !error ? (
         <p role="status">Loading quizzes…</p>
       ) : (
         !historyOnly && (

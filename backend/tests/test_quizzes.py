@@ -58,6 +58,22 @@ def assert_hidden(value):
         for v in value: assert_hidden(v)
 
 
+def test_student_and_staff_preview_share_active_quiz_visibility(setup):
+    client, student_headers, _, create = setup
+    active = create('ACTIVE')
+    draft = create('DRAFT')
+    inactive = create('INACTIVE')
+
+    student_ids = {row['id'] for row in client.get('/student/quizzes', headers=student_headers).json()}
+    preview_ids = {row['id'] for row in client.get('/student/quizzes').json()}
+    assert student_ids == preview_ids
+    assert active['id'] in student_ids
+    assert draft['id'] not in student_ids
+    assert inactive['id'] not in student_ids
+    # Preview authorization is read-only: staff cannot create a student attempt.
+    assert client.post(f"/student/quizzes/{active['id']}/attempts").status_code == 403
+
+
 def test_complete_workflow_and_snapshots(setup):
     c,h,questions,create = setup
     quiz = create()

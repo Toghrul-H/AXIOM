@@ -22,11 +22,17 @@ test("Student Preview hides private student destinations and uses a neutral dash
   assert.doesNotMatch(preview, /tasksApi|learningApi|useProgress|markRead/);
 });
 
-test("Student Preview never starts quiz attempts or loads attempt history", () => {
+test("Student Preview loads active quizzes but never starts attempts or loads history", () => {
+  assert.match(
+    quizzes,
+    /historyOnly \? Promise\.resolve\(\[\]\) : quizzesApi\.list/,
+  );
   assert.match(
     quizzes,
     /studentView \? Promise\.resolve\(\[\]\) : quizzesApi\.history/,
   );
   assert.match(quizzes, /disabled=\{busy \|\| studentView\}/);
   assert.match(quizzes, /Preview only/);
+  assert.match(quizzes, /!quizzes && !error/);
+  assert.match(quizzes, />\s*Retry\s*</);
 });
