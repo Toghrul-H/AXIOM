@@ -88,6 +88,26 @@ test("finite-set operations normalize duplicates deterministically", () => {
     middle: true,
     right: false,
   });
+  assert.deepEqual(plain(sets.vennRegions("union")), {
+    left: true,
+    middle: true,
+    right: true,
+  });
+  assert.deepEqual(plain(sets.vennRegions("a-minus-b")), {
+    left: true,
+    middle: false,
+    right: false,
+  });
+  assert.deepEqual(plain(sets.vennRegions("b-minus-a")), {
+    left: false,
+    middle: false,
+    right: true,
+  });
+  assert.deepEqual(plain(sets.vennRegions("symmetric-difference")), {
+    left: true,
+    middle: false,
+    right: true,
+  });
 });
 
 test("visualization UI exposes both accessible tools from Course", () => {
@@ -97,6 +117,9 @@ test("visualization UI exposes both accessible tools from Course", () => {
     "Build truth table",
     "Interactive visualizations",
     "Reset",
+    "A minus B",
+    "B minus A",
+    "Symmetric difference",
   ])
     assert.match(ui, new RegExp(text));
   assert.match(course, /\/student\/course\/visualizations/);

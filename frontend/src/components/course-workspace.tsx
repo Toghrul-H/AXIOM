@@ -126,6 +126,41 @@ export function CourseWorkspace({ mode }: Props) {
   );
 }
 
+type StudentCourseTab = "overview" | "materials" | "practice" | "interactive";
+
+function StudentCourseTabs({
+  active,
+  select,
+}: {
+  active: StudentCourseTab;
+  select: (tab: StudentCourseTab) => void;
+}) {
+  const tabs: { id: StudentCourseTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "materials", label: "Materials" },
+    { id: "practice", label: "Practice" },
+    { id: "interactive", label: "Interactive tools" },
+  ];
+  return (
+    <nav
+      className="course-workspace-tabs"
+      aria-label="Course learning sections"
+    >
+      {tabs.map((tab) => (
+        <button
+          type="button"
+          key={tab.id}
+          className={active === tab.id ? "is-active" : ""}
+          aria-current={active === tab.id ? "page" : undefined}
+          onClick={() => select(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 function StudentCourse({
   chapters,
   selected,
@@ -135,100 +170,172 @@ function StudentCourse({
   selected: CourseLesson | null;
   select: (lesson: CourseLesson | null) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<StudentCourseTab>("overview");
+  const materialGroups = chapters
+    .flatMap((chapter) => [
+      {
+        id: `chapter-${chapter.id}`,
+        label: chapter.title,
+        materials: chapter.materials,
+      },
+      ...chapter.lessons.map((lesson) => ({
+        id: `lesson-${lesson.id}`,
+        label: `${chapter.title} · ${lesson.title}`,
+        materials: lesson.materials,
+      })),
+    ])
+    .filter((group) => group.materials.length > 0);
+  const changeTab = (tab: StudentCourseTab) => {
+    setActiveTab(tab);
+    select(null);
+  };
+
   if (selected)
     return (
-      <section className="course-layout">
-        <div className="course-reading panel">
-          <button className="button button-quiet" onClick={() => select(null)}>
-            ← All lessons
-          </button>
-          <p className="eyebrow">COURSE LESSON</p>
-          <h1>{selected.title}</h1>
-          <div className="course-content">
-            <MathText text={selected.content} />
+      <main className="course-learning-workspace">
+        <StudentCourseTabs active="overview" select={changeTab} />
+        <section className="course-layout">
+          <div className="course-reading panel">
+            <button
+              className="button button-quiet"
+              onClick={() => select(null)}
+            >
+              ← All lessons
+            </button>
+            <p className="eyebrow">COURSE LESSON</p>
+            <h1>{selected.title}</h1>
+            <div className="course-content">
+              <MathText text={selected.content} />
+            </div>
+            {selected.questions.length > 0 && (
+              <section>
+                <h2>Practice questions</h2>
+                <ul className="course-question-links">
+                  {selected.questions.map((item) => (
+                    <li key={item.question_id}>
+                      <Link href="/student/practice">
+                        Practice question {item.position + 1}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <PublicMaterials
+              materials={selected.materials}
+              label={selected.title}
+            />
           </div>
-          {selected.questions.length > 0 && (
-            <section>
-              <h2>Practice questions</h2>
-              <ul className="course-question-links">
-                {selected.questions.map((item) => (
-                  <li key={item.question_id}>
-                    <Link href="/student/practice">
-                      Practice question {item.position + 1}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          <PublicMaterials
-            materials={selected.materials}
-            label={selected.title}
-          />
-        </div>
-      </section>
+        </section>
+      </main>
     );
   return (
-    <>
+    <main className="course-learning-workspace">
       <PageHeading
         eyebrow="DISCRETE MATHEMATICS I"
         title="Course"
-        description="Published explanations and practice links, arranged by chapter."
+        description="Published explanations, course materials, practice links, and interactive tools."
       />
-      <section className="panel course-tools-card">
-        <div>
-          <h2>Interactive visualizations</h2>
-          <p>
-            Build truth tables and explore finite-set operations in your
-            browser.
-          </p>
-        </div>
-        <Link
-          href="/student/course/visualizations"
-          className="button button-primary"
-        >
-          Open tools
-        </Link>
-      </section>
-      {chapters.length === 0 ? (
-        <section className="panel empty-state">
-          <BookOpen size={28} />
-          <h2>No published lessons yet</h2>
-          <p>Your lecturer has not published course material yet.</p>
-        </section>
-      ) : (
-        <section className="course-layout">
-          {chapters.map((chapter) => (
-            <article className="panel course-chapter" key={chapter.id}>
-              <h2>{chapter.title}</h2>
-              <PublicMaterials
-                materials={chapter.materials}
-                label={chapter.title}
-              />
-              {chapter.lessons.length === 0 ? (
-                <p className="muted">
-                  Lessons will appear here when published.
-                </p>
-              ) : (
-                <ol>
-                  {chapter.lessons.map((lesson) => (
-                    <li key={lesson.id}>
-                      <button
-                        className="course-lesson-link"
-                        onClick={() => select(lesson)}
-                      >
-                        <strong>{lesson.title}</strong>
-                        <span>Read lesson</span>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </article>
-          ))}
+      <StudentCourseTabs active={activeTab} select={changeTab} />
+      {activeTab === "overview" &&
+        (chapters.length === 0 ? (
+          <section className="panel empty-state">
+            <BookOpen size={28} />
+            <h2>No published lessons yet</h2>
+            <p>Your lecturer has not published course material yet.</p>
+          </section>
+        ) : (
+          <section className="course-layout">
+            {chapters.map((chapter) => (
+              <article className="panel course-chapter" key={chapter.id}>
+                <p className="eyebrow">CHAPTER {chapter.position + 1}</p>
+                <h2>{chapter.title}</h2>
+                {chapter.lessons.length === 0 ? (
+                  <p className="muted">
+                    Lessons will appear here when published.
+                  </p>
+                ) : (
+                  <ol>
+                    {chapter.lessons.map((lesson) => (
+                      <li key={lesson.id}>
+                        <button
+                          className="course-lesson-link"
+                          onClick={() => select(lesson)}
+                        >
+                          <strong>{lesson.title}</strong>
+                          <span>Read lesson</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </article>
+            ))}
+          </section>
+        ))}
+      {activeTab === "materials" && (
+        <section className="course-materials-workspace">
+          <div>
+            <p className="eyebrow">COURSE MATERIALS</p>
+            <h2>Published learning resources</h2>
+            <p className="muted">
+              Only materials published with accessible course content appear
+              here.
+            </p>
+          </div>
+          {materialGroups.length ? (
+            materialGroups.map((group) => (
+              <article className="panel" key={group.id}>
+                <PublicMaterials
+                  materials={group.materials}
+                  label={group.label}
+                />
+              </article>
+            ))
+          ) : (
+            <section className="panel empty-state">
+              <h2>No published materials yet</h2>
+              <p>
+                Materials will appear here when your lecturer publishes them.
+              </p>
+            </section>
+          )}
         </section>
       )}
-    </>
+      {activeTab === "practice" && (
+        <section className="panel course-resource-card">
+          <div>
+            <p className="eyebrow">PRACTICE</p>
+            <h2>Practice questions</h2>
+            <p>
+              Use the existing practice workspace to work through active
+              questions.
+            </p>
+          </div>
+          <Link href="/student/practice" className="button button-primary">
+            Open practice
+          </Link>
+        </section>
+      )}
+      {activeTab === "interactive" && (
+        <section className="panel course-resource-card">
+          <div>
+            <p className="eyebrow">INTERACTIVE WORKSPACE</p>
+            <h2>Truth tables and finite sets</h2>
+            <p>
+              Build truth tables and calculate finite-set operations directly in
+              your browser.
+            </p>
+          </div>
+          <Link
+            href="/student/course/visualizations"
+            className="button button-primary"
+          >
+            Open tools
+          </Link>
+        </section>
+      )}
+    </main>
   );
 }
 

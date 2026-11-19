@@ -185,34 +185,70 @@ function QuizRunner({ initial }: { initial: Attempt }) {
     q.id === item.id ? { ...q, ...draft } : q,
   );
   const unanswered = currentItems.filter((q) => !isAnswered(q)).length;
+  const answeredCount = currentItems.length - unanswered;
+  const progress = items.length
+    ? Math.round((answeredCount / items.length) * 100)
+    : 0;
   return (
-    <>
+    <main className="quiz-taking-workspace">
       <PageHeading
         eyebrow="QUIZ IN PROGRESS"
         title={initial.quiz_title}
         description="Your answers are saved as you work. Correct answers and solutions appear only after you finish the whole quiz."
       />
-      <nav aria-label="Question navigator" className="quiz-navigator">
+      <section className="quiz-taking-progress" aria-label="Quiz progress">
+        <div>
+          <p className="eyebrow">YOUR PROGRESS</p>
+          <strong>
+            {answeredCount} of {items.length} answered
+          </strong>
+          <span>{unanswered ? `${unanswered} remaining` : "All answered"}</span>
+        </div>
+        <progress value={answeredCount} max={items.length}>
+          {progress}% complete
+        </progress>
+        <span className="quiz-progress-value">{progress}%</span>
+      </section>
+      <nav aria-label="Question navigator" className="quiz-question-navigator">
+        <span className="quiz-navigator-label">Questions</span>
         {currentItems.map((q, i) => (
           <button
             key={q.id}
             disabled={busy}
-            className={`button ${i === index ? "button-primary" : "button-secondary"}`}
+            className={`quiz-question-nav ${i === index ? "is-current" : ""} ${isAnswered(q) ? "is-answered" : "is-unanswered"}`}
             aria-current={i === index ? "step" : undefined}
             aria-label={`Question ${i + 1}, ${isAnswered(q) ? "answered" : "unanswered"}`}
             onClick={() => void navigate(i)}
           >
-            {i + 1} · {isAnswered(q) ? "Answered" : "Unanswered"}
+            <span aria-hidden="true">{i + 1}</span>
+            <span className="sr-only">
+              {isAnswered(q) ? "Answered" : "Unanswered"}
+            </span>
           </button>
         ))}
       </nav>
-      <article className="panel quiz-panel">
-        <p>
-          Question {index + 1} of {items.length} ·{" "}
-          {item.response_type === "FREE_RESPONSE"
-            ? "Written response · not automatically graded"
-            : `${item.points} objective point${item.points === 1 ? "" : "s"}`}
-        </p>
+      <article className="panel quiz-panel quiz-taking-card">
+        <header className="quiz-taking-card-header">
+          <div>
+            <p className="eyebrow">
+              QUESTION {index + 1} OF {items.length}
+            </p>
+            <p>
+              {item.response_type === "FREE_RESPONSE"
+                ? "Written response · not automatically graded"
+                : `${item.points} objective point${item.points === 1 ? "" : "s"}`}
+            </p>
+          </div>
+          <span
+            className={
+              isAnswered(draft)
+                ? "quiz-answer-state answered"
+                : "quiz-answer-state"
+            }
+          >
+            {isAnswered(draft) ? "Answered" : "Not answered"}
+          </span>
+        </header>
         <h2 className="quiz-question">
           <MathText text={item.question_text} />
         </h2>
@@ -226,7 +262,7 @@ function QuizRunner({ initial }: { initial: Attempt }) {
             Clear answer
           </button>
         </fieldset>
-        <p role="status" aria-live="polite">
+        <p className="quiz-save-status" role="status" aria-live="polite">
           {status}
         </p>
         {error && (
@@ -234,7 +270,7 @@ function QuizRunner({ initial }: { initial: Attempt }) {
             {error}
           </p>
         )}
-        <div className="quiz-actions">
+        <div className="quiz-actions quiz-taking-navigation">
           <button
             className="button button-secondary"
             disabled={busy || index === 0}
@@ -265,7 +301,7 @@ function QuizRunner({ initial }: { initial: Attempt }) {
           )}
         </div>
       </article>
-      <div className="quiz-actions">
+      <div className="quiz-actions quiz-taking-footer">
         <Link
           href="/student/quizzes"
           onClick={(e) => {
@@ -321,7 +357,7 @@ function QuizRunner({ initial }: { initial: Attempt }) {
           </button>
         </div>
       </dialog>
-    </>
+    </main>
   );
 }
 function AnswerEditor({
