@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20.9.0
+          node-version: 24
       - name: Enable the repository's pnpm version
         run: corepack enable
       - name: Install locked dependencies
