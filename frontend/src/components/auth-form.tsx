@@ -150,6 +150,11 @@ export function AuthForm({ register = false }: { register?: boolean }) {
                   {register ? "Sign in" : "Create an account"}
                 </Link>
               </p>
+              {!register && (
+                <p className="field-hint">
+                  Want a safe tour first? <Link href="/demo">Explore Demo</Link>
+                </p>
+              )}
             </>
           }
         </section>

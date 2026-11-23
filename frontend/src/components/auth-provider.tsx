@@ -34,12 +34,15 @@ export function authRouteAccess(path: string) {
   const recoveryPage =
     path === "/forgot-password" || path === "/reset-password";
   const privacyPage = path === "/privacy";
+  const demoPage = path === "/demo";
   return {
     verificationPage,
     privacyPage,
+    demoPage,
     publicPage:
       path === "/login" ||
       path === "/register" ||
+      demoPage ||
       privacyPage ||
       verificationPage ||
       recoveryPage,
@@ -48,19 +51,25 @@ export function authRouteAccess(path: string) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const path = usePathname();
+  const router = useRouter();
+  const {
+    verificationPage,
+    privacyPage,
+    demoPage,
+    publicPage,
+    redirectAuthenticated,
+  } = authRouteAccess(path);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !demoPage);
   const [error, setError] = useState("");
   const [studentViewRequested, setStudentViewRequested] = useState(
     () =>
       typeof window !== "undefined" &&
       window.localStorage.getItem(STUDENT_VIEW_KEY) === "true",
   );
-  const path = usePathname();
-  const router = useRouter();
-  const { verificationPage, privacyPage, publicPage, redirectAuthenticated } =
-    authRouteAccess(path);
   useEffect(() => {
+    if (demoPage) return;
     let alive = true;
     const expire = () => {
       if (alive) {
@@ -103,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("focus", restore);
       window.removeEventListener("dmi-auth-expired", expire);
     };
-  }, []);
+  }, [demoPage]);
   useEffect(() => {
     if (loading || error) return;
     if (!user && !publicPage) router.replace("/login");
@@ -139,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   const studentView = studentViewRequested && canPreviewStudentView(user);
   let content: React.ReactNode;
-  if (verificationPage || privacyPage) content = children;
+  if (verificationPage || privacyPage || demoPage) content = children;
   else if (loading)
     content = (
       <main className="auth-page" role="status">

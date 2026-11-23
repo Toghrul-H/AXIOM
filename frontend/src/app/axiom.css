@@ -3275,6 +3275,278 @@ label,
 .student-preview-announcements li p {
   margin-bottom: 0;
 }
+
+/* Public, API-isolated AXIOM demonstration workspace. */
+.guest-mode {
+  background: var(--surface-page);
+  color: var(--text-primary);
+  min-height: 100dvh;
+}
+.guest-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-4) clamp(var(--space-4), 5vw, var(--space-8));
+}
+.guest-header nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+.guest-banner,
+.guest-contextual-notice {
+  align-items: center;
+  background: color-mix(
+    in srgb,
+    var(--color-primary) 9%,
+    var(--surface-raised)
+  );
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-primary) 30%, var(--border));
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) clamp(var(--space-4), 5vw, var(--space-8));
+}
+.guest-contextual-notice {
+  background: color-mix(
+    in srgb,
+    var(--color-success) 10%,
+    var(--surface-raised)
+  );
+}
+.guest-restricted {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+  padding: var(--space-2) clamp(var(--space-4), 5vw, var(--space-8));
+}
+.guest-content {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: clamp(var(--space-5), 5vw, var(--space-8));
+}
+.guest-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+.guest-student-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.guest-student-nav button.is-active {
+  background: var(--color-primary);
+  color: white;
+}
+.guest-metrics {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.guest-metrics button {
+  cursor: pointer;
+  text-align: left;
+}
+.guest-metrics strong {
+  color: var(--color-primary);
+  display: block;
+  font-size: 1.65rem;
+}
+.guest-lessons {
+  display: grid;
+  gap: var(--space-3);
+}
+.guest-lessons section {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+.guest-quiz fieldset {
+  border: 0;
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+  padding: 0;
+}
+.guest-quiz-option {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  padding: var(--space-3);
+}
+.guest-actions,
+.guest-task-form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.guest-task-form input {
+  flex: 1 1 220px;
+}
+.guest-score {
+  color: var(--color-primary);
+  font-size: 2rem;
+  font-weight: 700;
+}
+.guest-correct {
+  color: var(--color-success);
+  font-weight: 700;
+}
+.guest-incorrect {
+  color: var(--color-warning);
+  font-weight: 700;
+}
+.guest-list .is-unread {
+  font-weight: 700;
+}
+.guest-list .is-complete {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.guest-material-preview {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+}
+
+.guest-demo-tabs,
+.guest-manager-grid,
+.guest-message-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.guest-demo-tabs {
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  margin: var(--space-4) 0;
+}
+
+.guest-demo-tabs button.is-active,
+.guest-student-nav button.is-active {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.guest-manager-grid {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  align-items: end;
+  margin-top: var(--space-4);
+}
+
+.guest-manager-grid textarea,
+.guest-manager-grid fieldset {
+  min-width: 0;
+}
+
+.guest-record {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
+.guest-message-list {
+  max-height: 22rem;
+  overflow: auto;
+  padding: var(--space-2);
+}
+
+.guest-message-list article {
+  background: var(--surface-subtle);
+  border-radius: var(--radius-md);
+  max-width: 78%;
+  padding: var(--space-3);
+}
+
+.guest-message-list article.mine {
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--surface));
+  justify-self: end;
+}
+.guest-hero {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary) 13%, var(--surface-raised)),
+    var(--surface-raised)
+  );
+}
+.guest-hero h1,
+.guest-hero p {
+  margin-bottom: var(--space-2);
+}
+.guest-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.guest-grid svg,
+.guest-content > .panel > svg {
+  color: var(--color-primary);
+}
+.guest-grid h2,
+.guest-content > .panel h2 {
+  margin: var(--space-2) 0;
+}
+.guest-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.guest-list li {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+.guest-list label {
+  cursor: pointer;
+}
+.guest-metric {
+  color: var(--color-primary);
+  display: block;
+  font-size: 3rem;
+  line-height: 1;
+}
+.guest-submissions {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.guest-submissions article {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+@media (max-width: 760px) {
+  .guest-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .guest-header nav {
+    justify-content: flex-start;
+  }
+  .guest-grid,
+  .guest-submissions {
+    grid-template-columns: 1fr;
+  }
+  .guest-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .guest-record {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .guest-record .guest-actions {
+    width: 100%;
+  }
+}
 @media (max-width: 760px) {
   .student-view-banner {
     align-items: stretch;

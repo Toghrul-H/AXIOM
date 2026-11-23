@@ -10,6 +10,15 @@ Developed by **Toghrul Hasanli** as an academic internship software project in t
 context of ELTE Faculty of Informatics and Discrete Mathematics I. This is not an
 official ELTE production system and does not imply institutional endorsement.
 
+## Try Live Demo
+
+**[Try Live Demo — Guest Mode](https://axiom-orcin-xi.vercel.app/demo)**
+
+Guest Mode is prepared for the next approved frontend deployment; until then,
+this link may not yet be available in production. It requires no account and
+offers Student and Lecturer workflows with original synthetic data, temporary
+in-browser state, sample quizzes and grading, and clear protected-content
+boundaries. It never exposes ELTE course resources or changes production data.
 ## Status
 
 AXIOM is reported by its owner as deployed as a working academic internship project.
