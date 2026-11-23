@@ -3,12 +3,22 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import {
+  Bell,
   BookOpen,
   ClipboardCheck,
+  ChevronsLeft,
+  ChevronsRight,
+  GraduationCap,
+  LayoutDashboard,
+  LibraryBig,
+  ListTodo,
+  Menu,
   MessageCircle,
   RotateCcw,
   ShieldCheck,
+  Shapes,
   Users,
+  X,
 } from "lucide-react";
 import {
   demoFixtures,
@@ -20,32 +30,149 @@ import { DemoProvider, useDemo } from "./demo-provider";
 import { GuestModeNotice } from "./guest-mode-notice";
 import { Wordmark } from "./wordmark";
 
-const studentSections: { id: DemoSection; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "course", label: "Course" },
-  { id: "quiz", label: "Quiz" },
-  { id: "tasks", label: "Tasks" },
-  { id: "notifications", label: "Notifications" },
-  { id: "materials", label: "Materials" },
-  { id: "messages", label: "Messages" },
-];
+type LecturerSection =
+  "dashboard" | "questions" | "assessments" | "grading" | "course" | "messages";
 
-function StudentNavigation() {
-  const { state, setSection } = useDemo();
+const studentNavigation = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "course", label: "Course", icon: BookOpen },
+  { id: "quiz", label: "Quizzes", icon: Shapes },
+  { id: "tasks", label: "Personal Tasks", icon: ListTodo },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "messages", label: "Study Partner", icon: MessageCircle },
+  { id: "materials", label: "Course Materials", icon: LibraryBig },
+] as const;
+const lecturerNavigation = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "questions", label: "Question Bank", icon: LibraryBig },
+  { id: "assessments", label: "Assessments", icon: Shapes },
+  { id: "grading", label: "Grading", icon: ClipboardCheck },
+  { id: "course", label: "Course", icon: BookOpen },
+  { id: "messages", label: "Messages", icon: MessageCircle },
+] as const;
+
+function GuestRoleSwitcher({ compact = false }: { compact?: boolean }) {
+  const { role, setRole } = useDemo();
   return (
-    <nav className="guest-student-nav" aria-label="Student demo sections">
-      {studentSections.map((item) => (
+    <div className={`guest-role-switcher ${compact ? "is-compact" : ""}`}>
+      <button
+        aria-pressed={role === "student"}
+        className={role === "student" ? "is-active" : ""}
+        onClick={() => setRole("student")}
+        type="button"
+      >
+        Student Demo
+      </button>
+      <button
+        aria-pressed={role === "lecturer"}
+        className={role === "lecturer" ? "is-active" : ""}
+        onClick={() => setRole("lecturer")}
+        type="button"
+      >
+        Lecturer Demo
+      </button>
+    </div>
+  );
+}
+
+function GuestSidebar({
+  collapsed,
+  lecturerSection,
+  open,
+  onCollapse,
+  onNavigateLecturer,
+  onCloseMobile,
+}: {
+  collapsed: boolean;
+  lecturerSection: LecturerSection;
+  open: boolean;
+  onCollapse: () => void;
+  onNavigateLecturer: (section: LecturerSection) => void;
+  onCloseMobile: () => void;
+}) {
+  const { reset, role, setSection, state } = useDemo();
+  const navigation =
+    role === "student" ? studentNavigation : lecturerNavigation;
+  const active = role === "student" ? state.activeSection : lecturerSection;
+  return (
+    <aside
+      id="guest-sidebar"
+      className={`sidebar guest-sidebar ${open ? "is-open" : ""} ${collapsed ? "is-collapsed" : ""}`}
+      aria-label="Guest Mode navigation"
+    >
+      <a className="brand" href="#guest-main" onClick={onCloseMobile}>
+        <Wordmark />
+      </a>
+      <button
+        className="mobile-close icon-button"
+        onClick={onCloseMobile}
+        aria-label="Close navigation"
+        type="button"
+      >
+        <X size={20} />
+      </button>
+      <button
+        className="sidebar-collapse icon-button"
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        onClick={onCollapse}
+        type="button"
+      >
+        {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+      </button>
+      <div className="course-label">
+        <span className="course-icon">
+          <GraduationCap size={19} />
+        </span>
+        <div>
+          <strong>Discrete Mathematics I</strong>
+          <span>Guest workspace</span>
+        </div>
+      </div>
+      <p className="nav-caption">
+        {role === "student" ? "YOUR LEARNING" : "TEACHING"}
+      </p>
+      <nav>
+        {navigation.map(({ id, icon: Icon, label }) => {
+          const selected = active === id;
+          return (
+            <button
+              aria-current={selected ? "page" : undefined}
+              className={`nav-link ${selected ? "active" : ""}`}
+              key={id}
+              onClick={() => {
+                if (role === "student") setSection(id as DemoSection);
+                else onNavigateLecturer(id as LecturerSection);
+                onCloseMobile();
+              }}
+              title={collapsed ? label : undefined}
+              type="button"
+            >
+              <Icon size={19} strokeWidth={1.7} />
+              <span className="nav-label">{label}</span>
+              {selected && <span className="nav-dot" />}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="guest-sidebar-actions">
+        <GuestRoleSwitcher />
         <button
-          aria-current={state.activeSection === item.id ? "page" : undefined}
-          className={state.activeSection === item.id ? "is-active" : ""}
-          key={item.id}
-          onClick={() => setSection(item.id)}
+          className="button button-secondary"
+          onClick={reset}
           type="button"
         >
-          {item.label}
+          <RotateCcw size={16} /> Reset Demo
         </button>
-      ))}
-    </nav>
+      </div>
+      <div className="sidebar-bottom">
+        <div className="course-note">
+          <BookOpen size={19} />
+          <strong>Sample data only.</strong>
+          <p>Changes reset when you leave or reset the demo.</p>
+        </div>
+        <div className="sidebar-footer">AXIOM Guest Mode</div>
+      </div>
+    </aside>
   );
 }
 
@@ -572,27 +699,19 @@ function StudentDemo() {
     messages: <MessagesDemo />,
   };
   return (
-    <main className="guest-content">
-      <StudentNavigation />
-      {content[state.activeSection]}
-    </main>
+    <section className="guest-content">{content[state.activeSection]}</section>
   );
 }
 
-type LecturerSection =
-  "dashboard" | "questions" | "assessments" | "grading" | "course" | "messages";
-function LecturerDemo() {
-  const [section, setSection] = useState<LecturerSection>("dashboard");
-  const tabs: { id: LecturerSection; label: string }[] = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "questions", label: "Question Bank" },
-    { id: "assessments", label: "Assessments" },
-    { id: "grading", label: "Grading" },
-    { id: "course", label: "Course" },
-    { id: "messages", label: "Messages" },
-  ];
+function LecturerDemo({
+  section,
+  onNavigate,
+}: {
+  section: LecturerSection;
+  onNavigate: (section: LecturerSection) => void;
+}) {
   return (
-    <main className="guest-content">
+    <section className="guest-content">
       <section className="guest-hero panel">
         <p className="eyebrow">LECTURER DEMO</p>
         <h1>Explore teaching operations</h1>
@@ -601,26 +720,13 @@ function LecturerDemo() {
           demonstration data.
         </p>
       </section>
-      <nav className="guest-demo-tabs" aria-label="Lecturer demo sections">
-        {tabs.map((tab) => (
-          <button
-            aria-current={section === tab.id ? "page" : undefined}
-            className={section === tab.id ? "is-active" : ""}
-            key={tab.id}
-            onClick={() => setSection(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-      {section === "dashboard" && <LecturerDashboard onNavigate={setSection} />}
+      {section === "dashboard" && <LecturerDashboard onNavigate={onNavigate} />}
       {section === "questions" && <QuestionBankDemo />}
       {section === "assessments" && <AssessmentDemo />}
       {section === "grading" && <GradingDemo />}
       {section === "course" && <CourseManagementDemo />}
       {section === "messages" && <MessagesDemo />}
-    </main>
+    </section>
   );
 }
 function LecturerDashboard({
@@ -1199,54 +1305,98 @@ function CourseManagementDemo() {
   );
 }
 function DemoWorkspace() {
-  const { role, setRole, reset, notice } = useDemo();
+  const { role, notice, setSection, state } = useDemo();
+  const [lecturerSection, setLecturerSection] =
+    useState<LecturerSection>("dashboard");
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileNavigation =
+    role === "student"
+      ? studentNavigation.slice(0, 4)
+      : lecturerNavigation.slice(0, 4);
+  const active = role === "student" ? state.activeSection : lecturerSection;
   return (
-    <div className="guest-mode">
-      <header className="guest-header">
-        <Wordmark />
-        <nav aria-label="Guest Mode controls">
-          <button
-            aria-pressed={role === "student"}
-            className="button button-quiet"
-            onClick={() => setRole("student")}
-            type="button"
-          >
-            Student Demo
-          </button>
-          <button
-            aria-pressed={role === "lecturer"}
-            className="button button-quiet"
-            onClick={() => setRole("lecturer")}
-            type="button"
-          >
-            Lecturer Demo
-          </button>
-          <button
-            className="button button-secondary"
-            onClick={reset}
-            type="button"
-          >
-            <RotateCcw size={16} /> Reset Demo
-          </button>
-          <Link className="button button-quiet" href="/login">
-            Exit Demo
-          </Link>
+    <div className="app-shell guest-mode">
+      <a className="skip-link" href="#guest-main">
+        Skip to content
+      </a>
+      {mobileOpen && (
+        <button
+          className="sidebar-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <GuestSidebar
+        collapsed={collapsed}
+        lecturerSection={lecturerSection}
+        onCloseMobile={() => setMobileOpen(false)}
+        onCollapse={() => setCollapsed((value) => !value)}
+        onNavigateLecturer={setLecturerSection}
+        open={mobileOpen}
+      />
+      <div className="workspace guest-workspace">
+        <header className="topbar guest-topbar">
+          <div className="breadcrumb">
+            <button
+              aria-controls="guest-sidebar"
+              aria-expanded={mobileOpen}
+              className="mobile-menu icon-button"
+              onClick={() => setMobileOpen(true)}
+              type="button"
+            >
+              <Menu size={21} />
+            </button>
+            <span>Discrete Mathematics I</span>
+            <strong>
+              {role === "student" ? "Student Demo" : "Lecturer Demo"}
+            </strong>
+          </div>
+          <div className="topbar-right">
+            <GuestRoleSwitcher compact />
+            <Link className="button button-quiet" href="/login">
+              Exit Demo
+            </Link>
+          </div>
+        </header>
+        <section className="guest-banner" role="status">
+          <ShieldCheck aria-hidden="true" />
+          <span>
+            <strong>Guest Mode</strong> — You’re exploring AXIOM using sample
+            data. Changes are not saved.
+          </span>
+        </section>
+        <GuestModeNotice message={notice} />
+        <main id="guest-main" className="main-content guest-main" tabIndex={-1}>
+          {role === "student" ? (
+            <StudentDemo />
+          ) : (
+            <LecturerDemo
+              section={lecturerSection}
+              onNavigate={setLecturerSection}
+            />
+          )}
+        </main>
+        <nav
+          className="mobile-bottom-nav guest-mobile-nav"
+          aria-label="Guest Mode quick navigation"
+        >
+          {mobileNavigation.map(({ id, icon: Icon, label }) => (
+            <button
+              className={active === id ? "active" : ""}
+              key={id}
+              onClick={() => {
+                if (role === "student") setSection(id as DemoSection);
+                else setLecturerSection(id as LecturerSection);
+              }}
+              type="button"
+            >
+              <Icon size={19} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
         </nav>
-      </header>
-      <section className="guest-banner" role="status">
-        <ShieldCheck aria-hidden="true" />
-        <span>
-          <strong>Guest Mode</strong> — You’re exploring AXIOM with sample data.
-          Changes are not saved.
-        </span>
-      </section>
-      <GuestModeNotice message={notice} />
-      <section className="guest-restricted" role="note">
-        <strong>University Content — Restricted Access.</strong> This material
-        is available only to authorized ELTE users. Explore the demonstration
-        using original sample content.
-      </section>
-      {role === "student" ? <StudentDemo /> : <LecturerDemo />}
+      </div>
     </div>
   );
 }

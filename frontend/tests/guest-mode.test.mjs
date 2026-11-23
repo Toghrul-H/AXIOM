@@ -68,6 +68,10 @@ test("Guest workspace has role switching, safe document previews, and no product
   assert.match(guest, /University Content — Restricted Access/);
   assert.match(guest, /SAMPLE DOCUMENT PREVIEW/);
   assert.match(guest, /No PDF has been[\s\S]{0,80}requested/);
+  assert.match(guest, /sidebar guest-sidebar/);
+  assert.match(guest, /topbar guest-topbar/);
+  assert.match(guest, /mobile-bottom-nav guest-mobile-nav/);
+  assert.doesNotMatch(guest, /guest-student-nav/);
   assert.match(auth, /if \(demoPage\) return;/);
   assert.match(auth, /if \(!user && !publicPage\)/);
   assert.doesNotMatch(
